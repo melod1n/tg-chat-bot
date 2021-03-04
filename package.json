@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "dependencies": {
     "@types/node": "^14.14.31",
+    "fs": "0.0.1-security",
+    "node-fetch": "^2.6.1",
+    "systeminfo": "0.0.1",
+    "systeminformation": "^5.6.1",
     "telebot": "^1.4.1"
   }
 }
