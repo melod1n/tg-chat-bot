@@ -91,8 +91,6 @@ export class MessageDao extends Dao<StoredMessage> {
                 fromId: msg.from.id,
                 text: extractTextMessage(msg, Environment.BOT_PREFIX),
                 date: msg.date,
-                firstName: msg.from.first_name,
-                lastName: msg.from.last_name,
             };
         });
     }
@@ -100,8 +98,6 @@ export class MessageDao extends Dao<StoredMessage> {
     mapFrom(messages: typeof messagesTable.$inferInsert[]): StoredMessage[] {
         return messages.map(m => {
             return {
-                firstName: m.firstName,
-                lastName: m.lastName,
                 chatId: m.chatId,
                 messageId: m.id,
                 replyToMessageId: m.replyToMessageId,

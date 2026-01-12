@@ -7,8 +7,6 @@ export const messagesTable = sqliteTable("messages", {
     fromId: int().notNull(),
     text: text().notNull(),
     date: int().notNull(),
-    firstName: text().notNull(),
-    lastName: text(),
 });
 
 export type MessageInsert = typeof messagesTable.$inferInsert;
