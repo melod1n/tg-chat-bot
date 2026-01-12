@@ -7,6 +7,10 @@ export class DatabaseManager {
     static db: LibSQLDatabase;
 
     static init() {
-        DatabaseManager.db = drizzle(Environment.DB_PATH);
+        try {
+            DatabaseManager.db = drizzle(Environment.DB_PATH);
+        } catch (e) {
+            console.error(e);
+        }
     }
 }
