@@ -229,10 +229,18 @@ export async function sendErrorPlaceholder(message: Message): Promise<Message> {
 export async function initSystemSpecs(): Promise<void> {
     try {
         const [os, cpu, mem] = await Promise.all([si.osInfo(), si.cpu(), si.mem()]);
-        setSystemSpecs(`OS: ${os.distro}\n` +
+        const run = getRuntimeInfo();
+
+        const ramSize = (mem.total / 1024 / 1024 / 1024).toFixed(2);
+
+        const text =
+            `OS: ${os.distro}\n` +
+            `RUNTIME: ${run.runtime} ${run.version}\n` +
+            `DOCKER: ${Environment.IS_DOCKER}\n` +
             `CPU: ${cpu.manufacturer} ${cpu.brand} ${cpu.physicalCores} cores ${cpu.cores} threads\n` +
-            `RAM: ${Math.round(mem.total / Math.pow(2, 30))} GB`
-        );
+            `RAM: ${ramSize} GB`;
+
+        setSystemSpecs(text);
         return Promise.resolve();
     } catch (e) {
         return Promise.reject(e);
@@ -728,4 +736,24 @@ export function buildExcludedSet<
         });
 
     return Object.fromEntries(entries) as Record<Exclude<K, E[number]>, SQL>;
+}
+
+type RuntimeInfo =
+    | { runtime: "bun"; version: string }
+    | { runtime: "node"; version: string }
+    | { runtime: "unknown"; version: string };
+
+export function getRuntimeInfo(): RuntimeInfo {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (process as any).versions ?? {};
+
+    if (typeof v.bun === "string") {
+        return { runtime: "bun", version: v.bun };
+    }
+    if (typeof v.node === "string") {
+        return { runtime: "node", version: v.node };
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return { runtime: "unknown", version: String((process as any).version ?? "") };
 }

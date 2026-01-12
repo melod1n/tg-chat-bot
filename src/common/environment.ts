@@ -17,12 +17,12 @@ export class Environment {
     static USE_DAD: boolean;
     static USE_FU: boolean;
 
-    static OLLAMA_MODEL: string;
-    static OLLAMA_ADDRESS: string;
+    static OLLAMA_MODEL?: string;
+    static OLLAMA_ADDRESS?: string;
     static OLLAMA_API_KEY?: string;
-    static SYSTEM_PROMPT: string;
+    static SYSTEM_PROMPT?: string;
 
-    static GEMINI_API_KEY: string;
+    static GEMINI_API_KEY?: string;
 
     static waitText = "⏳ Дайте-ка подумать...";
 
@@ -33,17 +33,17 @@ export class Environment {
         Environment.BOT_PREFIX = process.env.BOT_PREFIX || "";
         Environment.CREATOR_ID = parseInt(process.env.CREATOR_ID || "");
         Environment.IS_DOCKER = process.env.IS_DOCKER == "true";
-        Environment.DATA_PATH = Environment.IS_DOCKER ? "/" + path.join("", "config", "data") : "data";
+        Environment.DATA_PATH = Environment.IS_DOCKER ? "/" + path.join("config", "data") : "data";
         Environment.DB_PATH = "file:" + path.join(Environment.DATA_PATH, Environment.DB_FILE_NAME);
 
         Environment.USE_MOM = process.env.USE_MOM == "true";
         Environment.USE_DAD = process.env.USE_DAD == "true";
         Environment.USE_FU = process.env.USE_FU == "true";
 
-        Environment.OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2";
-        Environment.OLLAMA_ADDRESS = process.env.OLLAMA_ADDRESS || "127.0.0.1";
+        Environment.OLLAMA_MODEL = process.env.OLLAMA_MODEL;
+        Environment.OLLAMA_ADDRESS = process.env.OLLAMA_ADDRESS;
         Environment.OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
-        Environment.SYSTEM_PROMPT = (process.env.SYSTEM_PROMPT?.trim()) || "";
+        Environment.SYSTEM_PROMPT = process.env.SYSTEM_PROMPT?.trim();
 
         Environment.GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     }

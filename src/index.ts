@@ -46,8 +46,6 @@ import {Choice} from "./commands/choice";
 import {Coin} from "./commands/coin";
 import {Qr} from "./commands/qr";
 import {Distort} from "./commands/distort";
-import {CacheSize} from "./commands/cache-size";
-import {CacheClear} from "./commands/cache-clear";
 import {Dice} from "./commands/dice";
 import {Unban} from "./commands/unban";
 import {Title} from "./commands/title";
@@ -113,17 +111,19 @@ export const chatCommands: ChatCommand[] = [
 
     new Shutdown(),
     new Leave(),
-
-    new OllamaChat(),
-    new OllamaSearch(),
-    new OllamaPrompt(),
-    new OllamaKill(),
-
-    new GeminiChat(),
-
-    new CacheSize(),
-    new CacheClear()
 ];
+
+if (Environment.OLLAMA_ADDRESS && Environment.OLLAMA_MODEL && Environment.SYSTEM_PROMPT) {
+    chatCommands.push(new OllamaChat(), new OllamaPrompt(), new OllamaKill());
+}
+
+if (Environment.OLLAMA_API_KEY) {
+    chatCommands.push(new OllamaSearch());
+}
+
+if (Environment.GEMINI_API_KEY) {
+    chatCommands.push(new GeminiChat());
+}
 
 async function main() {
     console.log(`TEST_ENVIRONMENT: ${Environment.TEST_ENVIRONMENT}\nDATA_PATH: ${Environment.DATA_PATH}`);
