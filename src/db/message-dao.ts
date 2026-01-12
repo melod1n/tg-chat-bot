@@ -5,7 +5,8 @@ import {and, eq} from "drizzle-orm";
 import {inArray} from "drizzle-orm/sql/expressions/conditions";
 import {Message} from "typescript-telegram-bot-api";
 import {Dao} from "../base/dao";
-import {buildExcludedSet} from "../util/utils";
+import {buildExcludedSet, extractTextMessage} from "../util/utils";
+import {Environment} from "../common/environment";
 
 export class MessageDao extends Dao<StoredMessage> {
 
@@ -88,7 +89,7 @@ export class MessageDao extends Dao<StoredMessage> {
                 id: msg.message_id,
                 replyToMessageId: msg.reply_to_message?.message_id,
                 fromId: msg.from.id,
-                text: msg.text,
+                text: extractTextMessage(msg, Environment.BOT_PREFIX),
                 date: msg.date,
                 firstName: msg.from.first_name,
                 lastName: msg.from.last_name,

@@ -80,6 +80,8 @@ export class GeminiChat extends ChatCommand {
                 editFn: async (text) => {
                     await editMessageText(chatId, waitMessage.message_id, escapeMarkdownV2Text(text), "Markdown");
                 },
+                onStop: async () => {
+                }
             });
 
             try {

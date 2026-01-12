@@ -298,16 +298,16 @@ async function getBackground(
     const msgPhoto = photoArr && photoArr.length ? photoArr[photoArr.length - 1] : undefined;
 
     if (msgPhoto?.file_id) {
-        const url = await getFileUrl(bot, msgPhoto.file_id);
+        const url = await getFileUrl(msgPhoto.file_id);
         const res = await axios.get<ArrayBuffer>(url, {responseType: "arraybuffer"});
         src = Buffer.from(res.data);
     } else {
         if (author.userId) {
-            src = await getUserAvatar(bot, author.userId);
+            src = await getUserAvatar(author.userId);
         } else if (author.chatId) {
-            src = await getChatAvatar(bot, author.chatId);
+            src = await getChatAvatar(author.chatId);
         } else if (!isForwarded && reply.from?.id) {
-            src = await getUserAvatar(bot, reply.from.id);
+            src = await getUserAvatar(reply.from.id);
         }
     }
 

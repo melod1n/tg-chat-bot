@@ -1,18 +1,10 @@
 import * as si from "systeminformation";
 import {ChatCommand} from "../base/chat-command";
 import {CallbackCommand} from "../base/callback-command";
-import {
-    CallbackQuery,
-    InlineKeyboardMarkup,
-    Message,
-    ParseMode,
-    PhotoSize,
-    TelegramBot,
-    User
-} from "typescript-telegram-bot-api";
+import {CallbackQuery, InlineKeyboardMarkup, Message, ParseMode, PhotoSize, User} from "typescript-telegram-bot-api";
 import {Environment} from "../common/environment";
 import {TelegramError} from "typescript-telegram-bot-api/dist/errors";
-import {bot, botUser, messageDao, setSystemSpecs} from "../index";
+import {bot, botUser, messageDao, setSystemInfo} from "../index";
 import os from "os";
 import axios from "axios";
 import {MessagePart} from "../common/message-part";
@@ -240,7 +232,7 @@ export async function initSystemSpecs(): Promise<void> {
             `CPU: ${cpu.manufacturer} ${cpu.brand} ${cpu.physicalCores} cores ${cpu.cores} threads\n` +
             `RAM: ${ramSize} GB`;
 
-        setSystemSpecs(text);
+        setSystemInfo(text);
         return Promise.resolve();
     } catch (e) {
         return Promise.reject(e);
@@ -335,18 +327,18 @@ export function escapeMarkdownV2Text(s: string) {
     return s;
 }
 
-export async function getFileUrl(bot: TelegramBot, fileId: string) {
+export async function getFileUrl(fileId: string): Promise<string> {
     const file = await bot.getFile({file_id: fileId});
     return `https://api.telegram.org/file/bot${bot.botToken}/${file.file_path}`;
 }
 
-export async function getChatAvatar(bot: TelegramBot, chatId: number): Promise<Buffer | null> {
+export async function getChatAvatar(chatId: number): Promise<Buffer | null> {
     try {
         const chat = await bot.getChat({chat_id: chatId});
         const photo = chat?.photo?.big_file_id || chat?.photo?.small_file_id;
         if (!photo) return null;
 
-        const url = await getFileUrl(bot, photo);
+        const url = await getFileUrl(photo);
         const res = await axios.get<ArrayBuffer>(url, {responseType: "arraybuffer"});
         return Buffer.from(res.data);
     } catch {
@@ -354,12 +346,12 @@ export async function getChatAvatar(bot: TelegramBot, chatId: number): Promise<B
     }
 }
 
-export async function getUserAvatar(bot: TelegramBot, userId: number): Promise<Buffer | null> {
+export async function getUserAvatar(userId: number): Promise<Buffer | null> {
     const photos = await bot.getUserProfilePhotos({user_id: userId, limit: 1});
     const last: PhotoSize | undefined = photos.photos?.[0]?.[photos.photos[0].length - 1];
     if (!last) return null;
 
-    const url = await getFileUrl(bot, last.file_id);
+    const url = await getFileUrl(last.file_id);
     const res = await axios.get<ArrayBuffer>(url, {responseType: "arraybuffer"});
     return Buffer.from(res.data);
 }
@@ -401,7 +393,7 @@ export async function collectReplyChainText(triggerMsg: Message, prefix: string 
         const t = extractTextMessage(triggerMsg, prefix);
         if (t) parts.push({
             bot: triggerMsg.from.id === botUser.id,
-            content: triggerMsg.text,
+            content: t,
             name: triggerMsg.from.first_name
         });
     }
@@ -499,7 +491,7 @@ export async function waveDistortSharp(
 
             if (sx < 0 || sx >= width || sy < 0 || sy >= height) {
                 // прозрачный пиксель
-                out[di + 0] = 0;
+                out[di] = 0;
                 out[di + 1] = 0;
                 out[di + 2] = 0;
                 out[di + 3] = 0;
@@ -678,6 +670,7 @@ export function startIntervalEditor(params: {
     intervalMs: number;
     getText: () => string;
     editFn: (text: string) => Promise<void>;
+    onStop: () => Promise<void>;
 }) {
     let lastSent = "";
     let stopped = false;
@@ -706,6 +699,7 @@ export function startIntervalEditor(params: {
             stopped = true;
             clearInterval(timer);
             await tick();
+            await params.onStop();
         },
     };
 }
@@ -748,12 +742,45 @@ export function getRuntimeInfo(): RuntimeInfo {
     const v = (process as any).versions ?? {};
 
     if (typeof v.bun === "string") {
-        return { runtime: "bun", version: v.bun };
+        return {runtime: "bun", version: v.bun};
     }
     if (typeof v.node === "string") {
-        return { runtime: "node", version: v.node };
+        return {runtime: "node", version: v.node};
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return { runtime: "unknown", version: String((process as any).version ?? "") };
+    return {runtime: "unknown", version: String((process as any).version ?? "")};
+}
+
+export type PhotoMaxSize = { width: number, height: number, url: string; unique_file_id: string; };
+
+export async function getPhotoMaxSize(photos: PhotoSize[], target: number = 1280): Promise<PhotoMaxSize | null> {
+    if (!photos) return null;
+
+    photos = photos.filter(p => Math.max(p.width, p.height) <= target);
+
+    if (photos.length === 0) return null;
+
+    if (photos.length === 1) {
+        return mapPhotoSizeToMax(photos[0]);
+    }
+
+    const max = photos.reduce((prev, cur) => {
+        if (!prev) return cur;
+
+        return cur.width * cur.height > prev.width * prev.height ? cur : prev;
+    }, null);
+
+    if (!max) return null;
+    return mapPhotoSizeToMax(max);
+}
+
+export async function mapPhotoSizeToMax(size: PhotoSize): Promise<PhotoMaxSize | null> {
+    if (!size) return null;
+    return {
+        width: size.width,
+        height: size.height,
+        url: await getFileUrl(size.file_id),
+        unique_file_id: size.file_unique_id
+    };
 }

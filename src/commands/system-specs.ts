@@ -1,14 +1,14 @@
 import {ChatCommand} from "../base/chat-command";
 import {logError, oldSendMessage} from "../util/utils";
 import {Message} from "typescript-telegram-bot-api";
-import {systemSpecsText} from "../index";
+import {systemInfoText} from "../index";
 
 export class SystemSpecs implements ChatCommand {
-    regexp = /^\/systemspecs/i;
-    title = "/systemSpecs";
-    description = "System specifications of system";
+    regexp = /^\/systeminfo/i;
+    title = "/systemInfo";
+    description = "System information";
 
     async execute(msg: Message) {
-        await oldSendMessage(msg, systemSpecsText).catch(logError);
+        await oldSendMessage(msg, systemInfoText).catch(logError);
     }
 }

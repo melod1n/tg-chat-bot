@@ -6,12 +6,16 @@ import {
     editMessageText,
     escapeMarkdownV2Text,
     extractText,
+    getPhotoMaxSize,
     logError,
     replyToMessage,
     startIntervalEditor
 } from "../util/utils";
 import {Environment} from "../common/environment";
 import {MessageStore} from "../common/message-store";
+import axios from "axios";
+import * as fs from "node:fs";
+import path from "node:path";
 
 export class OllamaChat extends ChatCommand {
     regexp = /^\/ollama\s([^]+)/;
@@ -28,17 +32,40 @@ export class OllamaChat extends ChatCommand {
 
         const chatId = msg.chat.id;
 
+        let imageFilePath: string | null = null;
+
+        const maxSize = await getPhotoMaxSize(msg.photo, 600);
+        if (maxSize) {
+            const res = await axios.get<ArrayBuffer>(maxSize.url, {responseType: "arraybuffer"});
+            const src = Buffer.from(res.data);
+
+            const imagePath = path.join(Environment.DATA_PATH, "temp");
+            if (!fs.existsSync(imagePath)) {
+                fs.mkdirSync(imagePath);
+            }
+
+            imageFilePath = path.join(imagePath, maxSize.unique_file_id + ".jpg");
+
+            try {
+                fs.writeFileSync(imageFilePath, src);
+            } catch (e) {
+                console.error(e);
+                imageFilePath = null;
+            }
+        }
+
         const messageParts = await collectReplyChainText(msg);
         console.log("MESSAGE PARTS", messageParts);
 
-        const chatMessages = messageParts.map(part => {
+        const chatMessages = messageParts.map((part, i) => {
             return {
                 role: part.bot ? "ASSISTANT" : "USER",
-                content: extractText(part.content, Environment.BOT_PREFIX)
+                content: extractText(part.content, Environment.BOT_PREFIX),
+                images: imageFilePath && i === 0 ? [imageFilePath] : null
             };
         });
         chatMessages.reverse();
-        chatMessages.unshift({role: "SYSTEM", content: Environment.SYSTEM_PROMPT});
+        chatMessages.unshift({role: "SYSTEM", content: Environment.SYSTEM_PROMPT, images: null});
 
         let waitMessage: Message;
 
@@ -71,6 +98,8 @@ export class OllamaChat extends ChatCommand {
                 editFn: async (text) => {
                     await editMessageText(chatId, waitMessage.message_id, escapeMarkdownV2Text(text), "Markdown");
                 },
+                onStop: async () => {
+                }
             });
 
             try {
@@ -103,7 +132,7 @@ export class OllamaChat extends ChatCommand {
 
                         waitMessage.reply_to_message = msg;
                         waitMessage.text = currentText;
-                        MessageStore.put(waitMessage);
+                        await MessageStore.put(waitMessage);
 
                         await replyToMessage(waitMessage, `⏱️ ${diff}s`);
                         break;

@@ -72,10 +72,10 @@ export const ollama = new Ollama({
 
 export const googleAi = new GoogleGenAI({apiKey: Environment.GEMINI_API_KEY});
 
-export let systemSpecsText: string = "";
+export let systemInfoText: string = "";
 
-export function setSystemSpecs(systemSpecs: string) {
-    systemSpecsText = systemSpecs;
+export function setSystemInfo(info: string) {
+    systemInfoText = info;
 }
 
 export const chatCommands: ChatCommand[] = [
@@ -149,22 +149,6 @@ bot.on("my_chat_member", async (u) => {
     console.log("my_chat_member", u);
 });
 
-bot.on("message", async (message) => {
-    console.log("message", message);
-
-    await UserStore.put(message.from);
-
-    if ((message.new_chat_members?.length || 0 > 0)) {
-        await bot.sendMessage({chat_id: message.chat.id, text: randomValue(inviteAnswers)}).catch(logError);
-        return;
-    }
-
-    if (message.left_chat_member && message.left_chat_member.id !== botUser.id) {
-        await bot.sendMessage({chat_id: message.chat.id, text: randomValue(kickAnswers)}).catch(logError);
-        return;
-    }
-});
-
 bot.on("edited_message", async (msg) => {
     console.log("edited_message", msg);
 
@@ -175,8 +159,20 @@ bot.on("edited_message", async (msg) => {
     await MessageStore.put(msg);
 });
 
-bot.on("message:text", async (msg) => {
-    await MessageStore.put(msg);
+bot.on("message", async (msg) => {
+    console.log("message", msg);
+
+    await Promise.all([MessageStore.put(msg), UserStore.put(msg.from)]);
+
+    if ((msg.new_chat_members?.length || 0 > 0)) {
+        await bot.sendMessage({chat_id: msg.chat.id, text: randomValue(inviteAnswers)}).catch(logError);
+        return;
+    }
+
+    if (msg.left_chat_member && msg.left_chat_member.id !== botUser.id) {
+        await bot.sendMessage({chat_id: msg.chat.id, text: randomValue(kickAnswers)}).catch(logError);
+        return;
+    }
 
     if (muted.has(msg.from.id)) return;
 
