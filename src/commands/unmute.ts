@@ -1,0 +1,38 @@
+import {removeMute} from "../db/database";
+import {ChatCommand} from "../base/chat-command";
+import {Requirements} from "../base/requirements";
+import {Requirement} from "../base/requirement";
+import {fullName, logError, oldSendMessage} from "../util/utils";
+import {Message} from "typescript-telegram-bot-api";
+import {botUser} from "../index";
+import {Environment} from "../common/environment";
+
+export class Unmute implements ChatCommand {
+    regexp = /^\/unmute/i;
+    title = "/unmute";
+    description = "Bot will start responding to the user";
+    requirements = Requirements.Build(Requirement.BOT_ADMIN, Requirement.CHAT, Requirement.REPLY);
+
+    async execute(msg: Message) {
+        if (!msg.reply_to_message) return;
+
+        const id = msg.reply_to_message.from.id;
+        const text = fullName(msg.reply_to_message.from);
+
+        if (id === botUser.id) {
+            await oldSendMessage(msg, "Бот и так всегда к себе прислушивается").catch(logError);
+            return;
+        }
+
+        if (id === Environment.CREATOR_ID) {
+            await oldSendMessage(msg, "Бот всегда слушает своего создателя").catch(logError);
+            return;
+        }
+
+        if (await removeMute(id)) {
+            await oldSendMessage(msg, text + " больше не в муте! 🔈").catch(logError);
+        } else {
+            await oldSendMessage(msg, text + " не был в муте 🤔").catch(logError);
+        }
+    }
+}

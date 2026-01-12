@@ -1,11 +1,17 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
-    "target": "es2017",
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "dist",
+    "mapRoot": "maps",
     "sourceMap": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true
   },
-  "exclude": [
-    "node_modules"
+  "include": [
+    "src"
   ]
 }
