@@ -36,21 +36,22 @@ export class OllamaChat extends ChatCommand {
 
         const maxSize = await getPhotoMaxSize(msg.photo);
         if (maxSize) {
-            const res = await axios.get<ArrayBuffer>(maxSize.url, {responseType: "arraybuffer"});
-            const src = Buffer.from(res.data);
-
             const imagePath = path.join(Environment.DATA_PATH, "temp");
             if (!fs.existsSync(imagePath)) {
                 fs.mkdirSync(imagePath);
             }
 
             imageFilePath = path.join(imagePath, maxSize.unique_file_id + ".jpg");
+            if (!fs.existsSync(imageFilePath)) {
+                const res = await axios.get<ArrayBuffer>(maxSize.url, {responseType: "arraybuffer"});
+                const src = Buffer.from(res.data);
 
-            try {
-                fs.writeFileSync(imageFilePath, src);
-            } catch (e) {
-                console.error(e);
-                imageFilePath = null;
+                try {
+                    fs.writeFileSync(imageFilePath, src);
+                } catch (e) {
+                    console.error(e);
+                    imageFilePath = null;
+                }
             }
         }
 
