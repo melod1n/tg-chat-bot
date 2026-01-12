@@ -142,7 +142,7 @@ async function main() {
         await UserStore.put(botUser);
         await bot.startPolling();
 
-        console.log(`Bot started! testEnvironment: ${Environment.TEST_ENVIRONMENT}`);
+        console.log(`Bot started! TEST_ENVIRONMENT: ${Environment.TEST_ENVIRONMENT}\nDATA_PATH: ${Environment.DATA_PATH}`);
     } catch (error) {
         console.error(error);
     }
