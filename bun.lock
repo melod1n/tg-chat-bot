@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "tg-ts-bot",
+      "name": "tg-chat-bot",
       "dependencies": {
         "@google/genai": "^1.34.0",
         "@libsql/client": "^0.15.15",

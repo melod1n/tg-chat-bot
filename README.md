@@ -1,2 +1,2 @@
-# tg-ts-bot
+# tg-chat-bot
  
