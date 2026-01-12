@@ -128,8 +128,8 @@ if (Environment.GEMINI_API_KEY) {
 async function main() {
     console.log(
         `TEST_ENVIRONMENT: ${Environment.TEST_ENVIRONMENT}\n` +
-        `DATA_PATH: ${Environment.DATA_PATH}\n` + `
-        MAX_PHOTO_SIZE: ${Environment.MAX_PHOTO_SIZE}`
+        `DATA_PATH: ${Environment.DATA_PATH}\n` +
+        `MAX_PHOTO_SIZE: ${Environment.MAX_PHOTO_SIZE}`
     );
 
     try {
