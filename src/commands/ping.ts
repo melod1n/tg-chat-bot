@@ -8,9 +8,9 @@ export class Ping implements ChatCommand {
     description = "Ping between received and sent message";
 
     async execute(msg: Message) {
-        const then = new Date().getMilliseconds();
+        const then = Date.now();
         await oldSendMessage(msg, "pong").catch(logError);
-        const now = new Date().getMilliseconds();
+        const now = Date.now();
         const diff = Math.abs(now - then);
         await oldSendMessage(msg, `ping: ${diff}ms`).catch(logError);
     }
