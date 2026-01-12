@@ -126,6 +126,8 @@ export const chatCommands: ChatCommand[] = [
 ];
 
 async function main() {
+    console.log(`TEST_ENVIRONMENT: ${Environment.TEST_ENVIRONMENT}\nDATA_PATH: ${Environment.DATA_PATH}`);
+
     try {
         const messages = await messageDao.getAll();
         const users = await userDao.getAll();
@@ -142,7 +144,7 @@ async function main() {
         await UserStore.put(botUser);
         await bot.startPolling();
 
-        console.log(`Bot started! TEST_ENVIRONMENT: ${Environment.TEST_ENVIRONMENT}\nDATA_PATH: ${Environment.DATA_PATH}`);
+        console.log(`Bot started!`);
     } catch (error) {
         console.error(error);
     }
