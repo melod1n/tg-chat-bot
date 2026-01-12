@@ -9,11 +9,11 @@
     "bun:start": "bun run dist/index.js"
   },
   "dependencies": {
-    "@google/genai": "^1.34.0",
-    "@libsql/client": "^0.15.15",
+    "@google/genai": "^1.35.0",
+    "@libsql/client": "^0.17.0",
     "@napi-rs/canvas": "^0.1.88",
     "@types/bun": "^1.3.5",
-    "@types/node": "^25.0.3",
+    "@types/node": "^25.0.6",
     "axios": "^1.13.2",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^1.0.0-beta.9-e89174b",
@@ -21,16 +21,16 @@
     "ollama": "^0.6.3",
     "qrcode": "^1.5.4",
     "sharp": "^0.34.5",
-    "systeminformation": "^5.27.14",
+    "systeminformation": "^5.30.3",
     "twemoji": "^14.0.2",
     "typescript-telegram-bot-api": "^0.11.0"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",
-    "@typescript-eslint/eslint-plugin": "8.46.3",
-    "@typescript-eslint/parser": "8.46.3",
+    "@typescript-eslint/eslint-plugin": "8.52.0",
+    "@typescript-eslint/parser": "8.52.0",
     "drizzle-kit": "^0.31.8",
-    "eslint": "9.39.1",
+    "eslint": "^9.39.2",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
