@@ -33,7 +33,7 @@ export class Environment {
         Environment.BOT_PREFIX = process.env.BOT_PREFIX || "";
         Environment.CREATOR_ID = parseInt(process.env.CREATOR_ID || "");
         Environment.IS_DOCKER = process.env.IS_DOCKER == "true";
-        Environment.DATA_PATH = Environment.IS_DOCKER ? path.join("", "config", "data") : "data";
+        Environment.DATA_PATH = Environment.IS_DOCKER ? "/" + path.join("", "config", "data") : "data";
         Environment.DB_PATH = "file:" + path.join(Environment.DATA_PATH, Environment.DB_FILE_NAME);
 
         Environment.USE_MOM = process.env.USE_MOM == "true";

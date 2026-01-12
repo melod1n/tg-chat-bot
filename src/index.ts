@@ -144,7 +144,7 @@ async function main() {
         await UserStore.put(botUser);
         await bot.startPolling();
 
-        console.log(`Bot started!`);
+        console.log("Bot started!");
     } catch (error) {
         console.error(error);
     }
