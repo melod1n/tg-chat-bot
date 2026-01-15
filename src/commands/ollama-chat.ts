@@ -1,6 +1,6 @@
 import {ChatCommand} from "../base/chat-command";
 import {Message} from "typescript-telegram-bot-api";
-import {bot, ollama} from "../index";
+import {abortOllamaRequest, bot, getOllamaRequest, ollama, ollamaRequests} from "../index";
 import {
     collectReplyChainText,
     editMessageText,
@@ -16,6 +16,8 @@ import {MessageStore} from "../common/message-store";
 import axios from "axios";
 import * as fs from "node:fs";
 import path from "node:path";
+import {Cancel} from "../callback_commands/cancel";
+import {OllamaCancel} from "../callback_commands/ollama-cancel";
 
 export class OllamaChat extends ChatCommand {
     regexp = /^\/ollama\s([^]+)/;
@@ -73,13 +75,18 @@ export class OllamaChat extends ChatCommand {
         const startTime = Date.now();
 
         try {
+            let isOver: boolean = false;
+            const uuid = crypto.randomUUID();
+            const cancelMarkup = {inline_keyboard: [[Cancel.withData(new OllamaCancel().data + " " + uuid).asButton()]]};
+
             waitMessage = await bot.sendMessage({
                 chat_id: chatId,
                 text: maxSize !== null ? `🔍 Внимательно изучаю изображение...\n🤓 ${maxSize.width}x${maxSize.height}px` : Environment.waitText,
                 reply_parameters: {
                     chat_id: chatId,
                     message_id: msg.message_id
-                }
+                },
+                reply_markup: cancelMarkup
             });
 
             const stream = await ollama.chat({
@@ -90,6 +97,8 @@ export class OllamaChat extends ChatCommand {
                 messages: chatMessages
             });
 
+            ollamaRequests.push({uuid: uuid, stream: stream, done: false, fromId: msg.from.id, chatId: msg.chat.id});
+
             let currentText = "";
             let shouldBreak = false;
 
@@ -97,7 +106,13 @@ export class OllamaChat extends ChatCommand {
                 intervalMs: 4500,
                 getText: () => currentText,
                 editFn: async (text) => {
-                    await editMessageText(chatId, waitMessage.message_id, escapeMarkdownV2Text(text), "Markdown");
+                    await editMessageText(
+                        chatId,
+                        waitMessage.message_id,
+                        escapeMarkdownV2Text(text),
+                        "Markdown",
+                        isOver ? {inline_keyboard: []} : cancelMarkup
+                    ).catch(logError);
                 },
                 onStop: async () => {
                 }
@@ -105,16 +120,22 @@ export class OllamaChat extends ChatCommand {
 
             try {
                 for await (const chunk of stream) {
-                    const content = chunk.message.content;
-                    currentText += content;
+                    if (!getOllamaRequest(uuid).done) {
+                        const content = chunk.message.content;
+                        currentText += content;
 
-                    const length = currentText.length;
-                    if (length > 4096) {
-                        currentText = currentText.slice(0, 4093) + "...";
+                        const length = currentText.length;
+                        if (length > 4096) {
+                            currentText = currentText.slice(0, 4093) + "...";
+                            shouldBreak = true;
+                        }
+                    } else {
                         shouldBreak = true;
                     }
 
                     if (shouldBreak || chunk.done) {
+                        isOver = true;
+
                         console.log("messageText", currentText);
                         console.log("length", length);
 
@@ -124,7 +145,7 @@ export class OllamaChat extends ChatCommand {
                             console.log("ended", true);
                         }
 
-                        stream.abort();
+                        console.log(`aborted request ${uuid}:`, abortOllamaRequest(uuid));
 
                         const diff = Math.abs(Date.now() - startTime) / 1000;
 
@@ -140,13 +161,15 @@ export class OllamaChat extends ChatCommand {
                     }
                 }
             } finally {
+                console.log(`aborted request ${uuid}:`, abortOllamaRequest(uuid));
                 await editor.tick();
                 await editor.stop();
             }
         } catch (error) {
+            if (error.message === "This operation was aborted") return;
+
             console.error(error);
             await replyToMessage(waitMessage, `Произошла ошибка!\n${error.toString()}`).catch(logError);
         }
-        return Promise.resolve();
     }
 }

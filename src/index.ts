@@ -6,6 +6,7 @@ import {
     checkRequirements,
     executeChatCommand,
     extractTextMessage,
+    findAndExecuteCallbackCommand,
     initSystemSpecs,
     logError,
     randomValue,
@@ -53,6 +54,9 @@ import {MessageDao} from "./db/message-dao";
 import {DatabaseManager} from "./db/database-manager";
 import {UserDao} from "./db/user-dao";
 import {UserStore} from "./common/user-store";
+import {OllamaRequest} from "./model/ollama-request";
+import {CallbackCommand} from "./base/callback-command";
+import {OllamaCancel} from "./callback_commands/ollama-cancel";
 
 process.setUncaughtExceptionCaptureCallback(console.error);
 
@@ -69,6 +73,33 @@ export const ollama = new Ollama({
     host: Environment.OLLAMA_ADDRESS,
     headers: {"Authorization": `Bearer ${Environment.OLLAMA_API_KEY}`}
 });
+
+export const ollamaRequests: OllamaRequest[] = [];
+
+export function getOllamaRequest(uuid: string): OllamaRequest | null {
+    return ollamaRequests.find(r => r.uuid === uuid);
+}
+
+export function updateOllamaRequest(uuid: string, request: OllamaRequest) {
+    const index = ollamaRequests.findIndex(r => r.uuid === uuid);
+    if (index >= 0) {
+        ollamaRequests[index] = request;
+    }
+}
+
+export function abortOllamaRequest(uuid: string): boolean {
+    const request = getOllamaRequest(uuid);
+    if (!request || request.done) return false;
+
+    try {
+        request.stream.abort();
+        updateOllamaRequest(uuid, {...request, done: true});
+        return true;
+    } catch (e) {
+        console.error(e);
+        return false;
+    }
+}
 
 export const googleAi = new GoogleGenAI({apiKey: Environment.GEMINI_API_KEY});
 
@@ -111,6 +142,10 @@ export const chatCommands: ChatCommand[] = [
 
     new Shutdown(),
     new Leave(),
+];
+
+export const callbackCommands: CallbackCommand[] = [
+    new OllamaCancel()
 ];
 
 if (Environment.OLLAMA_ADDRESS && Environment.OLLAMA_MODEL && Environment.SYSTEM_PROMPT) {
@@ -255,6 +290,11 @@ bot.on("inline_query", async (query) => {
             results: [],
         }).catch(logError);
     }
+});
+
+bot.on("callback_query", async (query) => {
+    console.log(query);
+    await findAndExecuteCallbackCommand(callbackCommands, query);
 });
 
 main().catch(console.error);

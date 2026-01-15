@@ -127,20 +127,21 @@ export async function findAndExecuteCallbackCommand(commands: CallbackCommand[],
     const fromId = query.from.id;
     const data = query.data || "";
 
-    const command = searchCallbackCommand(commands, data);
-    if (!command) return false;
+    const cmd = searchCallbackCommand(commands, data);
+    if (!cmd) return false;
 
-    const requirements = command.requirements;
+    // TODO: 15/01/2026, Danil Nikolaev: reimplement
+    const requirements = cmd.requirements;
     if (requirements) {
         if (requirements.isRequiresBotAdmin() && !Environment.ADMIN_IDS.has(fromId)) {
-            console.log(`${command.data}: adminId is bad: ${fromId}`);
+            console.log(`${cmd.data}: adminId is bad: ${fromId}`);
             return false;
         }
     }
 
-    await command.execute(query);
-    await command.answerCallbackQuery(query);
-    await command.afterExecute(query);
+    await cmd.execute(query);
+    await cmd.answerCallbackQuery(query);
+    await cmd.afterExecute(query);
     return true;
 }
 
