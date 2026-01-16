@@ -171,6 +171,12 @@ export class OllamaChat extends ChatCommand {
         } catch (error) {
             if (error.message.toLowerCase().includes("aborted")) return;
 
+            await bot.editMessageReplyMarkup({
+                chat_id: chatId,
+                message_id: waitMessage.message_id,
+                reply_markup: {inline_keyboard: []}
+            }).catch(logError);
+
             console.error(error);
             await replyToMessage(waitMessage, `Произошла ошибка!\n${error.toString()}`).catch(logError);
         }
