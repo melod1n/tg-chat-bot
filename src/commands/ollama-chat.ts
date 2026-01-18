@@ -94,12 +94,7 @@ export class OllamaChat extends ChatCommand {
                 stream: true,
                 think: false,
                 keep_alive: 300,
-                messages: chatMessages,
-                options: {
-                    temperature: 0.1,
-                    top_p: 0.8,
-                    repeat_penalty: 1.15
-                }
+                messages: chatMessages
             });
 
             ollamaRequests.push({uuid: uuid, stream: stream, done: false, fromId: msg.from.id, chatId: msg.chat.id});
