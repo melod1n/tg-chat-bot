@@ -799,3 +799,9 @@ export async function imageToBase64(filePath: string): Promise<string> {
         });
     });
 }
+
+export function ifTrue(exp?: never): boolean {
+    if (!exp) return false;
+
+    return ["true", "t", "y", 1, "1"].includes(exp);
+}

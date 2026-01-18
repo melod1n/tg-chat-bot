@@ -56,6 +56,7 @@ import {OllamaRequest} from "./model/ollama-request";
 import {CallbackCommand} from "./base/callback-command";
 import {OllamaCancel} from "./callback_commands/ollama-cancel";
 import {MistralChat} from "./commands/mistral-chat";
+import {Transliteration} from "./commands/transliteration";
 
 process.setUncaughtExceptionCaptureCallback(console.error);
 
@@ -133,6 +134,7 @@ export const chatCommands: ChatCommand[] = [
     new Distort(),
     new Dice(),
     new Title(),
+    new Transliteration(),
 
     new AdminsAdd(),
     new AdminsRemove(),
