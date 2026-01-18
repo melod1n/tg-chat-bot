@@ -99,6 +99,8 @@ export function fixLayoutAuto(
 
 export class Transliteration extends ChatCommand {
     regexp = /^\/tr/i;
+    title = "/tr [text or reply]";
+    description = "Transliteration EN <--> RU";
 
     async execute(msg: Message): Promise<void> {
         let text: string = "";
