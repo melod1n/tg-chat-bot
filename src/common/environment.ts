@@ -13,6 +13,8 @@ export class Environment {
     static DB_FILE_NAME: string = "database.db";
     static DB_PATH: string;
 
+    static ONLY_FOR_CREATOR_MODE: boolean;
+
     static USE_MOM: boolean;
     static USE_DAD: boolean;
     static USE_FU: boolean;
@@ -44,6 +46,8 @@ export class Environment {
         Environment.IS_DOCKER = process.env.IS_DOCKER == "true";
         Environment.DATA_PATH = Environment.IS_DOCKER ? "/" + path.join("config", "data") : "data";
         Environment.DB_PATH = "file:" + path.join(Environment.DATA_PATH, Environment.DB_FILE_NAME);
+
+        Environment.ONLY_FOR_CREATOR_MODE = process.env.ONLY_FOR_CREATOR_MODE == "true";
 
         Environment.USE_MOM = process.env.USE_MOM == "true";
         Environment.USE_DAD = process.env.USE_DAD == "true";

@@ -170,11 +170,21 @@ async function main() {
         `MAX_PHOTO_SIZE: ${Environment.MAX_PHOTO_SIZE}`
     );
 
+    const commands = chatCommands.filter(cmd => {
+        return cmd.title && cmd.title.startsWith("/") && cmd.title.split(" ").length === 1 && cmd.description;
+    }).map(cmd => {
+        return {
+            command: cmd.title.toLowerCase(),
+            description: cmd.description,
+        };
+    });
+
     try {
         const results = await Promise.all(
             [
                 initSystemSpecs(), readData(), retrieveAnswers(),
-                bot.getMe()
+                bot.getMe(),
+                bot.setMyCommands({commands: commands, scope: {type: "default"}})
             ]
         );
         botUser = results[3];

@@ -64,6 +64,8 @@ export function searchCallbackCommand(commands: CallbackCommand[], data: string)
 export async function checkRequirements(cmd: ChatCommand | null, msg: Message): Promise<boolean> {
     if (!cmd) return false;
 
+    if (Environment.ONLY_FOR_CREATOR_MODE && msg.from.id !== Environment.CREATOR_ID) return false;
+
     const fromId = msg.from?.id || -1;
 
     if (Environment.CHAT_IDS_WHITELIST.size > 0 &&
