@@ -17,7 +17,7 @@ export class OllamaPrompt extends ChatCommand {
 
     async execute(msg: Message, match?: RegExpExecArray): Promise<void> {
         console.log("match", match);
-        return this.executeOllama(msg, match?.[1]);
+        return this.executeOllama(msg, match?.[3]);
     }
 
     async executeOllama(msg: Message, text: string): Promise<void> {

@@ -19,7 +19,7 @@ export class Title extends ChatCommand {
     );
 
     async execute(msg: Message, match?: RegExpExecArray): Promise<void> {
-        const title = (match?.[1] ?? "").trim();
+        const title = (match?.[3] ?? "").trim();
         if (title.length === 0) {
             await oldReplyToMessage(msg, "Не нашёл название...").catch(logError);
             return;
