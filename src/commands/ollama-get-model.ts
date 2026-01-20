@@ -11,7 +11,6 @@ export class OllamaGetModel extends ChatCommand {
     async execute(msg: Message): Promise<void> {
 
         const showResponse = await ollama.show({model: Environment.OLLAMA_MODEL});
-        console.log(showResponse);
 
         const caps = showResponse.capabilities;
 
