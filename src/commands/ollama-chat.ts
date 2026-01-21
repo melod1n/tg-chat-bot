@@ -68,7 +68,7 @@ export class OllamaChat extends ChatCommand {
                 model: Environment.OLLAMA_MODEL,
                 stream: true,
                 keep_alive: 300,
-                think: true,
+                think: false,
                 messages: chatMessages,
             });
 
