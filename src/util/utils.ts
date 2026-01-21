@@ -4,7 +4,7 @@ import {CallbackCommand} from "../base/callback-command";
 import {CallbackQuery, InlineKeyboardMarkup, Message, ParseMode, PhotoSize, User} from "typescript-telegram-bot-api";
 import {Environment} from "../common/environment";
 import {TelegramError} from "typescript-telegram-bot-api/dist/errors";
-import {bot, botUser, messageDao, setSystemInfo} from "../index";
+import {bot, botUser, getOllamaRequest, messageDao, setSystemInfo} from "../index";
 import os from "os";
 import axios from "axios";
 import {MessagePart} from "../common/message-part";
@@ -746,6 +746,7 @@ function toHex(v: number) {
 }
 
 export function startIntervalEditor(params: {
+    uuid?: string;
     intervalMs: number;
     getText: () => string;
     editFn: (text: string) => Promise<void>;
@@ -755,7 +756,7 @@ export function startIntervalEditor(params: {
     let stopped = false;
 
     const tick = async () => {
-        if (stopped) return;
+        if (stopped || (params.uuid && getOllamaRequest(params.uuid)?.done)) return;
         const next = params.getText();
         if (!next || next === lastSent) return;
 

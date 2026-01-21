@@ -1,8 +1,12 @@
 import {CallbackCommand} from "../base/callback-command";
 import {CallbackQuery} from "typescript-telegram-bot-api";
 import {abortOllamaRequest, bot, getOllamaRequest} from "../index";
-import {logError} from "../util/utils";
 import {Environment} from "../common/environment";
+import {logError} from "../util/utils";
+import {MessageStore} from "../common/message-store";
+import {StoredMessage} from "../model/stored-message";
+
+const cancelledText = "```Ollama\n❌ Отменено```";
 
 export class OllamaCancel extends CallbackCommand {
 
@@ -18,16 +22,35 @@ export class OllamaCancel extends CallbackCommand {
         if (!uuid) return;
 
         const request = getOllamaRequest(uuid);
-        if (!request) return;
-        if (request.fromId !== fromId && fromId !== Environment.CREATOR_ID) return;
+        if (request) {
+            if (request.fromId !== fromId && fromId !== Environment.CREATOR_ID) return;
 
-        const aborted = abortOllamaRequest(uuid);
-        console.log(`aborted request ${uuid}:`, aborted);
+            const aborted = abortOllamaRequest(uuid);
+            console.log(`aborted request ${uuid}:`, aborted);
+        }
 
-        await bot.editMessageReplyMarkup({
+        let msg: StoredMessage | null = null;
+        try {
+            msg = await MessageStore.get(chatId, messageId);
+        } catch (e) {
+            logError(e);
+        }
+
+        let content: string | null = null;
+
+        if (msg?.text?.trim()?.length > 0) {
+            content = msg?.text.trim();
+            if (content.length + cancelledText.length > 4096) {
+                content = content.substring(0, 4096 - cancelledText.length - 2) + "\n";
+            }
+        }
+
+        await bot.editMessageText({
             chat_id: chatId,
             message_id: messageId,
-            reply_markup: {inline_keyboard: []}
+            text: `${content}${cancelledText}`,
+            parse_mode: "Markdown",
+            reply_markup: {inline_keyboard: []},
         }).catch(logError);
     }
 }

@@ -57,7 +57,6 @@ export class OllamaChat extends ChatCommand {
             waitMessage = await bot.sendMessage({
                 chat_id: chatId,
                 text: Environment.waitText,
-                // text: maxSize !== null ? `🔍 Внимательно изучаю изображение...\n🤓 ${maxSize.width}x${maxSize.height}px` : Environment.waitText,
                 reply_parameters: {
                     chat_id: chatId,
                     message_id: msg.message_id
@@ -68,9 +67,9 @@ export class OllamaChat extends ChatCommand {
             const stream = await ollama.chat({
                 model: Environment.OLLAMA_MODEL,
                 stream: true,
-                think: false,
                 keep_alive: 300,
-                messages: chatMessages
+                think: true,
+                messages: chatMessages,
             });
 
             ollamaRequests.push({uuid: uuid, stream: stream, done: false, fromId: msg.from.id, chatId: msg.chat.id});
@@ -79,16 +78,25 @@ export class OllamaChat extends ChatCommand {
             let shouldBreak = false;
 
             const editor = startIntervalEditor({
+                uuid: uuid,
                 intervalMs: 4500,
                 getText: () => currentText,
                 editFn: async (text) => {
-                    await editMessageText(
-                        chatId,
-                        waitMessage.message_id,
-                        escapeMarkdownV2Text(text),
-                        "Markdown",
-                        isOver ? {inline_keyboard: []} : cancelMarkup
-                    ).catch(logError);
+                    try {
+                        await editMessageText(
+                            chatId,
+                            waitMessage.message_id,
+                            escapeMarkdownV2Text(text),
+                            "Markdown",
+                            isOver ? {inline_keyboard: []} : cancelMarkup
+                        );
+
+                        waitMessage.reply_to_message = msg;
+                        waitMessage.text = text;
+                        await MessageStore.put(waitMessage);
+                    } catch (e) {
+                        logError(e);
+                    }
                 },
                 onStop: async () => {
                 }
@@ -96,8 +104,43 @@ export class OllamaChat extends ChatCommand {
             await editor.tick();
 
             try {
+                let isThinking = false;
+
                 for await (const chunk of stream) {
-                    currentText += chunk.message.content;
+                    const content = chunk.message.content;
+
+                    if (content === "<think>" || chunk.message.thinking) {
+                        if (!isThinking) {
+                            await editMessageText(
+                                chatId,
+                                waitMessage.message_id,
+                                "🤔 Размышляю...",
+                                "Markdown",
+                                isOver ? {inline_keyboard: []} : cancelMarkup
+                            ).catch(logError);
+                            console.log("Thinking:\n");
+                        }
+
+                        isThinking = true;
+                    }
+
+                    if (chunk.message.thinking) {
+                        console.log(chunk.message.thinking);
+                    } else {
+                        console.log(chunk.message.content);
+                    }
+
+                    if (!isThinking) {
+                        currentText += content;
+                    }
+
+                    if (isThinking && !chunk.message.thinking) {
+                        currentText += content;
+                    }
+
+                    if (content === "</think>" || !chunk.message.thinking) {
+                        isThinking = false;
+                    }
 
                     if (currentText.length > 4096) {
                         currentText = currentText.slice(0, 4093) + "...";
@@ -130,8 +173,7 @@ export class OllamaChat extends ChatCommand {
                         waitMessage.reply_to_message = msg;
                         waitMessage.text = currentText;
                         await MessageStore.put(waitMessage);
-
-                        await oldReplyToMessage(waitMessage, `⏱️ ${diff}s` /*+ (maxSize !== null ? `\n🤓 ${maxSize.width}x${maxSize.height}px` : "")*/);
+                        await oldReplyToMessage(waitMessage, `⏱️ ${diff}s`);
                         break;
                     }
                 }
