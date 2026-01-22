@@ -19,6 +19,8 @@ export class Shutdown extends ChatCommand {
     title = "/shutdown";
     description = "Self-destruction sequence for bot (shutdown)";
 
+    argsMode = "optional" as const;
+
     requirements = Requirements.Build(Requirement.BOT_CREATOR);
 
     async execute(msg: Message): Promise<void> {
