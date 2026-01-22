@@ -1,34 +1,39 @@
 import {ChatCommand} from "../base/chat-command";
 import {Message} from "typescript-telegram-bot-api";
-import {extractMessagePayload, logError, sendMessage} from "../util/utils";
-import {bot} from "../index";
+import {extractMessagePayload, logError, replyToMessage} from "../util/utils";
+import {bot, botUser} from "../index";
 import QRCode from "qrcode";
 
 export class Qr extends ChatCommand {
+
+    argsMode = "optional" as const;
+
     title = "/qr";
     description = "Generates QR-code from text you sent or replied to.";
 
-    async execute(msg: Message): Promise<void> {
+    async execute(msg: Message, match?: RegExpExecArray): Promise<void> {
         const chatId = msg.chat.id;
 
-        const split = msg.text?.split("/qr ");
-        const matchText = split[1];
-
-        const payload = extractMessagePayload(msg, matchText);
+        let payload = extractMessagePayload(msg, match?.[3]);
         if (!payload) {
-            await sendMessage({
-                chat_id: chatId,
-                text: "Отправь: /qr <текст или ссылка>\n" + "или ответь командой /qr на сообщение, из которого взять текст."
-            });
+            await replyToMessage(
+                {
+                    message: msg,
+                    text: "Не найден текст для генерации QR-кода."
+                }
+            );
             return;
         }
 
         if (payload.length > 1500) {
-            await sendMessage({
-                chat_id: chatId,
-                text: `Слишком длинный текст для QR (${payload.length} символов). Максимум 1500 символов.`
-            });
-            return;
+            payload = payload.slice(0, 1500);
+
+            await replyToMessage(
+                {
+                    message: msg,
+                    text: `Слишком длинный текст для QR (${payload.length} символов). Текст будет обрезан до 1500 символов.`
+                }
+            );
         }
 
         try {
@@ -41,16 +46,24 @@ export class Qr extends ChatCommand {
                 scale: 8,
             });
 
+            const maxCaptionLength = botUser.is_premium ? 4096 : 1024;
+
             await bot.sendPhoto({
                 chat_id: chatId,
                 photo: pngBuffer,
-                caption: `QR готов ✅\nСодержимое: ${payload.length > 80 ? payload.slice(0, 80) + "…" : payload}`,
+                caption: "QR-код готов ✅\nСодержимое:\n<blockquote expandable>" +
+                    `${payload.length > maxCaptionLength ? payload.slice(0, maxCaptionLength - 40) + "..." : payload}` +
+                    "</blockquote>",
                 reply_parameters: {
                     message_id: msg.message_id,
-                }
+                },
+                parse_mode: "HTML"
             });
         } catch (e) {
-            await sendMessage({chat_id: chatId, text: `Не получилось сгенерировать QR: ${e?.message ?? String(e)}`}).catch(logError);
+            await replyToMessage({
+                message: msg,
+                text: `Не получилось сгенерировать QR: ${e?.message ?? String(e)}`
+            }).catch(logError);
         }
     }
 }
