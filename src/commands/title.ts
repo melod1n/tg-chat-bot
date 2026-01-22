@@ -13,8 +13,9 @@ export class Title extends ChatCommand {
     description = "Change group title";
 
     requirements = Requirements.Build(
-        Requirement.CHAT,
         Requirement.BOT_ADMIN,
+        Requirement.CHAT,
+        Requirement.CHAT_ADMIN,
         Requirement.BOT_CHAT_ADMIN
     );
 
