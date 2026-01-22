@@ -11,7 +11,6 @@ export class Leave extends ChatCommand {
     requirements = Requirements.Build(
         Requirement.BOT_ADMIN,
         Requirement.CHAT,
-        Requirement.CHAT_ADMIN
     );
 
     async execute(msg: Message): Promise<void> {
