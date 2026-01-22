@@ -1,10 +1,9 @@
 import axios from "axios";
 import sharp from "sharp";
-import twemoji from "twemoji";
 import emojiRegex from "emoji-regex";
 
 import {createCanvas, GlobalFonts, type Image as CanvasImage, loadImage, SKRSContext2D} from "@napi-rs/canvas";
-import {Message, PhotoSize} from "typescript-telegram-bot-api";
+import {Message, MessageEntity, PhotoSize} from "typescript-telegram-bot-api";
 import {ChatCommand} from "../base/chat-command";
 import {bot, botUser} from "../index";
 import {
@@ -18,6 +17,7 @@ import {
 } from "../util/utils";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
+import twemoji from "twemoji";
 
 try {
     GlobalFonts.registerFromPath("./assets/Inter_18pt-ExtraThin.ttf", "InterExtraThin");
@@ -29,6 +29,10 @@ try {
     GlobalFonts.registerFromPath("./assets/Inter_18pt-Bold.ttf", "InterBold");
     GlobalFonts.registerFromPath("./assets/Inter_18pt-ExtraBold.ttf", "InterExtraBold");
     GlobalFonts.registerFromPath("./assets/Inter_18pt-Black.ttf", "InterBlack");
+    GlobalFonts.registerFromPath("./assets/Inter_18pt-Italic.ttf", "InterItalic");
+    GlobalFonts.registerFromPath("./assets/JetBrainsMono-Bold.ttf", "JetBrainsMonoBold");
+    GlobalFonts.registerFromPath("./assets/JetBrainsMono-Italic.ttf", "JetBrainsMonoItalic");
+    GlobalFonts.registerFromPath("./assets/JetBrainsMono-Regular.ttf", "JetBrainsMonoRegular");
 } catch (e) {
     console.error(e);
 }
@@ -58,10 +62,11 @@ export class Quote extends ChatCommand {
                 return;
             }
 
-            let quote = quoteRaw.length ? quoteRaw : "…";
-            if (quote.length > 2500) quote = quote.slice(0, 2497) + "…";
+            const quote = quoteRaw.length ? quoteRaw : "…";
 
-            const png = await renderQuoteCard(quote, reply);
+            const entities = reply.entities ?? reply.caption_entities ?? [];
+
+            const png = await renderQuoteCard(quote, reply, entities);
             await bot.sendPhoto({
                 chat_id: chatId,
                 photo: png,
@@ -76,9 +81,15 @@ export class Quote extends ChatCommand {
     }
 }
 
-// ===== Emoji cache & helpers =====
-
 const emojiCache = new Map<string, CanvasImage>();
+const customEmojiCache = new Map<string, CanvasImage>();
+
+function appleEmojiUrl(emoji: string): string {
+    const codePoints = [...emoji]
+        .map(char => char.codePointAt(0)!.toString(16))
+        .join("-");
+    return `https://github.githubassets.com/images/icons/emoji/unicode/${codePoints}.png`;
+}
 
 function twemojiUrl(emoji: string) {
     const code = twemoji.convert.toCodePoint(emoji);
@@ -86,30 +97,219 @@ function twemojiUrl(emoji: string) {
 }
 
 async function loadEmoji(emoji: string): Promise<CanvasImage> {
-    const url = twemojiUrl(emoji);
-    const cached = emojiCache.get(url);
+    let url = appleEmojiUrl(emoji);
+    let cached = emojiCache.get(url);
     if (cached) return cached;
 
-    const res = await axios.get<ArrayBuffer>(url, {responseType: "arraybuffer"});
-    const img = await loadImage(Buffer.from(res.data));
-    emojiCache.set(url, img);
-    return img;
+    try {
+        const res = await axios.get<ArrayBuffer>(url, {responseType: "arraybuffer"});
+        const img = await loadImage(Buffer.from(res.data));
+        emojiCache.set(url, img);
+        return img;
+    } catch (e) {
+        logError(e);
+
+        url = twemojiUrl(emoji);
+        cached = emojiCache.get(url);
+        if (cached) return cached;
+
+        try {
+            const res = await axios.get<ArrayBuffer>(url, {responseType: "arraybuffer"});
+            const img = await loadImage(Buffer.from(res.data));
+            emojiCache.set(url, img);
+            return img;
+        } catch (e) {
+            logError(e);
+        }
+    }
+
+    return null;
 }
 
-type Segment = { type: "text"; v: string } | { type: "emoji"; v: string };
+async function loadCustomEmoji(customEmojiId: string): Promise<CanvasImage | null> {
+    const cached = customEmojiCache.get(customEmojiId);
+    if (cached) return cached;
 
-function splitSegments(text: string): Segment[] {
+    try {
+        const stickerSet = await bot.getCustomEmojiStickers({
+            custom_emoji_ids: [customEmojiId]
+        });
+
+        if (!stickerSet || stickerSet.length === 0) {
+            console.warn(`Custom emoji ${customEmojiId} not found`);
+            return null;
+        }
+
+        const sticker = stickerSet[0];
+
+        if (sticker.is_animated || sticker.is_video) {
+            console.warn(`Animated/video custom emoji ${customEmojiId} not supported`);
+            return loadEmoji(sticker.emoji);
+        }
+
+        const url = await getFileUrl(sticker.file_id);
+        const res = await axios.get<ArrayBuffer>(url, {responseType: "arraybuffer"});
+
+        let buffer: Buffer<ArrayBufferLike> = Buffer.from(res.data);
+        try {
+            buffer = await sharp(buffer).png().toBuffer();
+        } catch (e) {
+            logError(e);
+        }
+
+        const img = await loadImage(buffer);
+        customEmojiCache.set(customEmojiId, img);
+        return img;
+    } catch (e) {
+        console.warn(`Failed to load custom emoji ${customEmojiId}:`, e);
+        return null;
+    }
+}
+
+type TextStyle = {
+    bold?: boolean;
+    italic?: boolean;
+    code?: boolean;
+    strike?: boolean;
+    underline?: boolean;
+    pre?: boolean;
+    mention?: boolean;
+};
+
+type Segment =
+    | { type: "text"; v: string; style: TextStyle }
+    | { type: "emoji"; v: string }
+    | { type: "custom_emoji"; id: string };
+
+function parseEntities(text: string, entities: MessageEntity[]): Segment[] {
+    if (!entities || entities.length === 0) {
+        return splitSegments(text, {});
+    }
+
+    const styleMap = new Map<number, TextStyle>();
+    const customEmojiPositions = new Map<number, string>();
+
+    for (const entity of entities) {
+        const start = entity.offset;
+        const end = entity.offset + entity.length;
+
+        if (entity.type === "custom_emoji" && entity.custom_emoji_id) {
+            for (let i = start; i < end; i++) {
+                customEmojiPositions.set(i, entity.custom_emoji_id);
+            }
+            continue;
+        }
+
+        for (let i = start; i < end; i++) {
+            if (!styleMap.has(i)) {
+                styleMap.set(i, {});
+            }
+            const style = styleMap.get(i)!;
+
+            switch (entity.type) {
+                case "bold":
+                    style.bold = true;
+                    break;
+                case "italic":
+                    style.italic = true;
+                    break;
+                case "code":
+                    style.code = true;
+                    break;
+                case "strikethrough":
+                    style.strike = true;
+                    break;
+                case "underline":
+                    style.underline = true;
+                    break;
+                case "pre":
+                    style.pre = true;
+                    break;
+                case "mention":
+                case "text_mention":
+                    style.mention = true;
+                    break;
+            }
+        }
+    }
+
+    const segments: Segment[] = [];
+    const textArray = Array.from(text);
+    let currentStyle: TextStyle = {};
+    let currentText = "";
+    let i = 0;
+
+    const pushCurrentText = () => {
+        if (currentText) {
+            const textSegments = splitSegments(currentText, currentStyle);
+            segments.push(...textSegments);
+            currentText = "";
+        }
+    };
+
+    for (const char of textArray) {
+        if (char === "️") continue;
+        if (customEmojiPositions.has(i)) {
+            pushCurrentText();
+            const emojiId = customEmojiPositions.get(i)!;
+            let emojiEnd = i;
+            while (emojiEnd < textArray.length * 2 && customEmojiPositions.get(emojiEnd) === emojiId) {
+                emojiEnd++;
+            }
+
+            segments.push({type: "custom_emoji", id: emojiId});
+
+            i = emojiEnd;
+            continue;
+        }
+
+        const charStyle = styleMap.get(i) || {};
+
+        const styleChanged =
+            charStyle.bold !== currentStyle.bold ||
+            charStyle.italic !== currentStyle.italic ||
+            charStyle.code !== currentStyle.code ||
+            charStyle.strike !== currentStyle.strike ||
+            charStyle.underline !== currentStyle.underline ||
+            charStyle.pre !== currentStyle.pre ||
+            charStyle.mention !== currentStyle.mention;
+
+        if (styleChanged && currentText) {
+            pushCurrentText();
+            currentStyle = charStyle;
+        } else if (!currentText) {
+            currentStyle = charStyle;
+        }
+
+        currentText += char;
+        i++;
+    }
+
+    pushCurrentText();
+
+    return segments;
+}
+
+function splitSegments(text: string, style: TextStyle): Segment[] {
     const re = emojiRegex();
     const out: Segment[] = [];
     let last = 0;
 
     for (const m of text.matchAll(re)) {
         const i = m.index ?? 0;
-        if (i > last) out.push({type: "text", v: text.slice(last, i)});
+        if (i > last) {
+            const textPart = text.slice(last, i);
+            if (textPart) out.push({type: "text", v: textPart, style: {...style}});
+        }
         out.push({type: "emoji", v: m[0]});
         last = i + m[0].length;
     }
-    if (last < text.length) out.push({type: "text", v: text.slice(last)});
+
+    if (last < text.length) {
+        const textPart = text.slice(last);
+        if (textPart) out.push({type: "text", v: textPart, style: {...style}});
+    }
+
     return out;
 }
 
@@ -117,7 +317,38 @@ function measure(ctx: SKRSContext2D, s: string) {
     return ctx.measureText(s).width;
 }
 
-function wrapSegments(ctx: SKRSContext2D, segments: Segment[], maxW: number, emojiW: number) {
+function applyTextStyle(ctx: SKRSContext2D, style: TextStyle, baseFontSize: number) {
+    let fontFamily = "InterSemiBold";
+    let fontStyle = "normal";
+
+    if (style.code || style.pre) {
+        if (style.bold && style.italic) {
+            fontFamily = "JetBrainsMonoBold";
+            fontStyle = "italic";
+        } else if (style.bold) {
+            fontFamily = "JetBrainsMonoBold";
+        } else if (style.italic) {
+            fontFamily = "JetBrainsMonoItalic";
+        } else {
+            fontFamily = "JetBrainsMonoRegular";
+        }
+    } else {
+        if (style.bold && style.italic) {
+            fontFamily = "InterBold";
+            fontStyle = "italic";
+        } else if (style.bold) {
+            fontFamily = "InterBold";
+        } else if (style.italic) {
+            fontFamily = "InterSemiBold";
+            fontStyle = "italic";
+        }
+    }
+
+    ctx.font = `${fontStyle} ${baseFontSize}px ${fontFamily}, sans-serif`;
+}
+
+function wrapSegments(ctx: SKRSContext2D, segments: Segment[], maxW: number, baseFontSize: number) {
+    const emojiW = Math.round(baseFontSize * 1.05);
     const lines: { segments: Segment[]; width: number }[] = [];
     let cur: Segment[] = [];
     let w = 0;
@@ -128,6 +359,14 @@ function wrapSegments(ctx: SKRSContext2D, segments: Segment[], maxW: number, emo
         w = 0;
     };
 
+    const getSegmentWidth = (seg: Segment): number => {
+        if (seg.type === "emoji" || seg.type === "custom_emoji") {
+            return emojiW;
+        }
+        applyTextStyle(ctx, seg.style, baseFontSize);
+        return measure(ctx, seg.v);
+    };
+
     const add = (seg: Segment, segW: number) => {
         if (cur.length && w + segW > maxW) push();
         cur.push(seg);
@@ -135,12 +374,11 @@ function wrapSegments(ctx: SKRSContext2D, segments: Segment[], maxW: number, emo
     };
 
     for (const seg of segments) {
-        if (seg.type === "emoji") {
+        if (seg.type === "emoji" || seg.type === "custom_emoji") {
             add(seg, emojiW);
             continue;
         }
 
-        // переносы/пробелы
         const parts = seg.v.split(/(\s+)/);
         for (const p of parts) {
             if (!p) continue;
@@ -148,7 +386,10 @@ function wrapSegments(ctx: SKRSContext2D, segments: Segment[], maxW: number, emo
             const sub = p.split("\n");
             for (let si = 0; si < sub.length; si++) {
                 const chunk = sub[si];
-                if (chunk) add({type: "text", v: chunk}, measure(ctx, chunk));
+                if (chunk) {
+                    const chunkSeg: Segment = {type: "text", v: chunk, style: seg.style};
+                    add(chunkSeg, getSegmentWidth(chunkSeg));
+                }
                 if (si !== sub.length - 1) push();
             }
         }
@@ -162,27 +403,41 @@ function lineWidth(ctx: SKRSContext2D, segments: Segment[], fontSize: number) {
     const emojiSize = Math.round(fontSize * 1.05);
     let w = 0;
     for (const s of segments) {
-        w += s.type === "emoji" ? emojiSize : ctx.measureText(s.v).width;
+        if (s.type === "emoji" || s.type === "custom_emoji") {
+            w += emojiSize;
+        } else {
+            applyTextStyle(ctx, s.style, fontSize);
+            w += ctx.measureText(s.v).width;
+        }
     }
     return w;
 }
 
 function addEllipsisToFit(ctx: SKRSContext2D, segments: Segment[], maxW: number, fontSize: number): Segment[] {
     const emojiSize = Math.round(fontSize * 1.05);
-    const ell: Segment = {type: "text", v: "…"};
+    const ell: Segment = {type: "text", v: "…", style: {}};
+
+    ctx.font = `${fontSize}px InterSemiBold, sans-serif`;
     const ellW = ctx.measureText("…").width;
 
     const out = segments.map((s) => ({...s})) as Segment[];
 
     const widthOf = (arr: Segment[]) => {
         let w = 0;
-        for (const s of arr) w += s.type === "emoji" ? emojiSize : ctx.measureText(s.v).width;
+        for (const s of arr) {
+            if (s.type === "emoji" || s.type === "custom_emoji") {
+                w += emojiSize;
+            } else {
+                applyTextStyle(ctx, s.style, fontSize);
+                w += ctx.measureText(s.v).width;
+            }
+        }
         return w;
     };
 
     while (out.length && widthOf(out) + ellW > maxW) {
         const last = out[out.length - 1];
-        if (last.type === "emoji") {
+        if (last.type === "emoji" || last.type === "custom_emoji") {
             out.pop();
             continue;
         }
@@ -202,12 +457,73 @@ async function drawLine(ctx: SKRSContext2D, line: Segment[], x: number, baseline
 
     for (const seg of line) {
         if (seg.type === "text") {
+            applyTextStyle(ctx, seg.style, fontSize);
+
+            if (seg.style.underline || seg.style.strike) {
+                const textWidth = measure(ctx, seg.v);
+                const oldStroke = ctx.strokeStyle;
+                const oldLineWidth = ctx.lineWidth;
+
+                ctx.strokeStyle = ctx.fillStyle;
+                ctx.lineWidth = Math.max(1, fontSize / 20);
+
+                if (seg.style.underline) {
+                    const underlineY = baselineY + fontSize * 0.1;
+                    ctx.beginPath();
+                    ctx.moveTo(cx, underlineY);
+                    ctx.lineTo(cx + textWidth, underlineY);
+                    ctx.stroke();
+                }
+
+                if (seg.style.strike) {
+                    const strikeY = baselineY - fontSize * 0.3;
+                    ctx.beginPath();
+                    ctx.moveTo(cx, strikeY);
+                    ctx.lineTo(cx + textWidth, strikeY);
+                    ctx.stroke();
+                }
+
+                ctx.strokeStyle = oldStroke;
+                ctx.lineWidth = oldLineWidth;
+            }
+
             ctx.fillText(seg.v, cx, baselineY);
             cx += measure(ctx, seg.v);
-        } else {
-            const img = await loadEmoji(seg.v);
-            const y = baselineY - emojiSize + Math.round(fontSize * 0.2);
-            ctx.drawImage(img, cx, y, emojiSize, emojiSize);
+        } else if (seg.type === "emoji") {
+            try {
+                const img = await loadEmoji(seg.v);
+                const y = baselineY - emojiSize + Math.round(fontSize * 0.2);
+                ctx.drawImage(img, cx, y, emojiSize, emojiSize);
+            } catch (e) {
+                logError(e);
+                ctx.fillText(seg.v, cx, baselineY);
+            }
+            cx += emojiSize;
+        } else if (seg.type === "custom_emoji") {
+            try {
+                const img = await loadCustomEmoji(seg.id);
+                if (img) {
+                    const y = baselineY - emojiSize + Math.round(fontSize * 0.2);
+                    ctx.drawImage(img, cx, y, emojiSize, emojiSize);
+                } else {
+                    const img = await loadEmoji("😥");
+                    const y = baselineY - emojiSize + Math.round(fontSize * 0.2);
+                    ctx.drawImage(img, cx, y, emojiSize, emojiSize);
+                }
+            } catch (e) {
+                console.warn("Failed to draw custom emoji:", e);
+
+                try {
+                    const img = await loadEmoji("😥");
+                    const y = baselineY - emojiSize + Math.round(fontSize * 0.2);
+                    ctx.drawImage(img, cx, y, emojiSize, emojiSize);
+                } catch (e) {
+                    logError(e);
+
+                    ctx.fillText(":-(", cx, baselineY);
+                }
+            }
+
             cx += emojiSize;
         }
     }
@@ -220,18 +536,15 @@ type Fitted = {
     truncated: boolean;
 };
 
-function fitQuoteToBox(ctx: SKRSContext2D, quoteWithOpen: string, boxW: number, boxH: number): Fitted {
+function fitQuoteToBox(ctx: SKRSContext2D, segments: Segment[], boxW: number, boxH: number): Fitted {
     const MAX_FONT = 64;
-    const MIN_FONT = 18;
+    const MIN_FONT = 12;
     const endSuffix = " »";
 
-    const segments = splitSegments(quoteWithOpen);
+    for (let fontSize = MAX_FONT; fontSize >= MIN_FONT; fontSize -= 1) {
+        ctx.font = `${fontSize}px InterSemiBold, sans-serif`;
 
-    for (let fontSize = MAX_FONT; fontSize >= MIN_FONT; fontSize -= 2) {
-        const emojiSize = Math.round(fontSize * 1.05);
-        ctx.font = `${fontSize}px Inter, sans-serif`;
-
-        const lines = wrapSegments(ctx, segments, boxW, emojiSize);
+        const lines = wrapSegments(ctx, segments, boxW, fontSize);
         const lineH = Math.round(fontSize * 1.20);
         const totalH = lines.length * lineH;
 
@@ -241,7 +554,7 @@ function fitQuoteToBox(ctx: SKRSContext2D, quoteWithOpen: string, boxW: number, 
         const last = lines[lines.length - 1];
 
         if (totalH <= boxH && last.width + endW <= boxW) {
-            last.segments = [...last.segments, {type: "text", v: endSuffix}];
+            last.segments = [...last.segments, {type: "text", v: endSuffix, style: {}}];
             last.width += endW;
 
             return {fontSize: fontSize, lineH, lines, truncated: false};
@@ -249,13 +562,12 @@ function fitQuoteToBox(ctx: SKRSContext2D, quoteWithOpen: string, boxW: number, 
     }
 
     const fontSize = MIN_FONT;
-    const emojiSize = Math.round(fontSize * 1.05);
-    ctx.font = `${fontSize}px Inter, sans-serif`;
+    ctx.font = `${fontSize}px InterSemiBold, sans-serif`;
 
     const lineH = Math.round(fontSize * 1.20);
     const maxLinesByHeight = Math.max(1, Math.floor(boxH / lineH));
 
-    let lines = wrapSegments(ctx, segments, boxW, emojiSize);
+    let lines = wrapSegments(ctx, segments, boxW, fontSize);
 
     const endW = ctx.measureText(endSuffix).width;
 
@@ -280,7 +592,7 @@ function fitQuoteToBox(ctx: SKRSContext2D, quoteWithOpen: string, boxW: number, 
 
     if (lines.length) {
         const last = lines[lines.length - 1];
-        last.segments = [...last.segments, {type: "text", v: endSuffix}];
+        last.segments = [...last.segments, {type: "text", v: endSuffix, style: {}}];
         last.width += endW;
     }
 
@@ -315,9 +627,6 @@ async function getBackground(
 
     if (!src) {
         return makeDarkGradientBgFancy(W, H, `${reply.message_id}-${reply.date ?? ""}`);
-        // return sharp({create: {width: W, height: H, channels: 3, background: "#1f1f1f"}})
-        //     .png()
-        //     .toBuffer();
     }
 
     return sharp(src)
@@ -328,7 +637,7 @@ async function getBackground(
         .toBuffer();
 }
 
-async function renderQuoteCard(quote: string, reply: Message) {
+async function renderQuoteCard(quote: string, reply: Message, entities: MessageEntity[]) {
     const W = 1280;
     const H = 720;
 
@@ -358,7 +667,6 @@ async function renderQuoteCard(quote: string, reply: Message) {
     c.fillRect(0, 0, W, H);
 
     const edgePad = 56;
-
     const reservedBottom = 140;
 
     const quoteBoxX = edgePad;
@@ -374,10 +682,14 @@ async function renderQuoteCard(quote: string, reply: Message) {
     c.shadowBlur = 10;
     c.shadowOffsetY = 2;
 
-    const quoteForFit = `« ${quote}`;
-    const fitted = fitQuoteToBox(c, quoteForFit, quoteBoxW, quoteH);
+    const segments = parseEntities(quote, entities);
 
-    c.font = `${fitted.fontSize}px InterSemiBold, sans-serif`;
+    const quoteSegments: Segment[] = [
+        {type: "text", v: "« ", style: {}},
+        ...segments
+    ];
+
+    const fitted = fitQuoteToBox(c, quoteSegments, quoteBoxW, quoteH);
 
     const totalTextH = fitted.lines.length * fitted.lineH;
     let y = quoteTop + (quoteH - totalTextH) / 2 + fitted.fontSize;
