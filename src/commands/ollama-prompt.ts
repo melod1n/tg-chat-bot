@@ -1,10 +1,13 @@
 import {ChatCommand} from "../base/chat-command";
 import {Message} from "typescript-telegram-bot-api";
-import {bot, ollama} from "../index";
-import {editMessageText, ignore, oldReplyToMessage} from "../util/utils";
+import {abortOllamaRequest, bot, getOllamaRequest, ollama, ollamaRequests} from "../index";
+import {escapeMarkdownV2Text, logError, oldReplyToMessage, startIntervalEditor} from "../util/utils";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {Environment} from "../common/environment";
+import {Cancel} from "../callback_commands/cancel";
+import {OllamaCancel} from "../callback_commands/ollama-cancel";
+import {MessageStore} from "../common/message-store";
 
 export class OllamaPrompt extends ChatCommand {
     command = "ollamaPrompt";
@@ -26,92 +29,161 @@ export class OllamaPrompt extends ChatCommand {
 
         let waitMessage: Message;
 
+        const startTime = Date.now();
+
         try {
+            const uuid = crypto.randomUUID();
+            const cancelMarkup = {inline_keyboard: [[Cancel.withData(new OllamaCancel().data + " " + uuid).asButton()]]};
+
             waitMessage = await bot.sendMessage({
                 chat_id: chatId,
                 text: Environment.waitText,
                 reply_parameters: {
                     chat_id: chatId,
                     message_id: msg.message_id
-                },
-                parse_mode: "Markdown"
+                }
             });
 
-            const stream = await ollama.chat({
+            const stream = await ollama.generate({
                 model: Environment.OLLAMA_MODEL,
                 stream: true,
-                messages: [
-                    {
-                        role: "system",
-                        content: text
-                    }
-                ]
+                think: false,
+                prompt: text
             });
 
-            let ended = false;
-            let messageText = "";
+            const newRequest = {
+                uuid: uuid,
+                stream: stream,
+                done: false,
+                fromId: msg.from.id,
+                chatId: msg.chat.id,
+            };
 
-            const interval = setInterval(async () => {
-                const length = messageText.length;
+            console.log("Pushing new request", newRequest);
+            ollamaRequests.push(newRequest);
 
-                console.log("messageText", messageText);
-                console.log("length", length);
-                console.log("ended", ended);
-                await editMessageText(chatId, waitMessage.message_id, messageText);
-                if (ended) {
-                    clearInterval(interval);
+            await bot.editMessageReplyMarkup(
+                {
+                    chat_id: chatId,
+                    message_id: waitMessage.message_id,
+                    reply_markup: cancelMarkup
                 }
-            }, 4500);
+            ).catch(logError);
 
+            let currentText = "";
             let shouldBreak = false;
 
-            for await (const chunk of stream) {
-                messageText += chunk.message.content;
+            const editor = startIntervalEditor({
+                uuid: uuid,
+                intervalMs: 4500,
+                getText: () => currentText,
+                editFn: async (text) => {
+                    if (getOllamaRequest(uuid)?.done) return;
 
-                const length = messageText.length;
+                    try {
+                        await bot.editMessageText({
+                            chat_id: chatId,
+                            message_id: waitMessage.message_id,
+                            text: escapeMarkdownV2Text(text),
+                            parse_mode: "Markdown",
+                            reply_markup: cancelMarkup
+                        }).catch(logError);
 
-                if (length > 4096) {
-                    messageText = messageText.slice(0, 4093) + "...";
-                    shouldBreak = true;
+                        console.log("editMessageText", text);
+
+                        waitMessage.reply_to_message = msg;
+                        waitMessage.text = text;
+                        await MessageStore.put(waitMessage);
+                    } catch (e) {
+                        logError(e);
+                    }
                 }
+            });
+            await editor.tick();
 
-                if (shouldBreak) {
-                    console.log("messageText", messageText);
-                    console.log("length", length);
-                    console.log("break", true);
-                    ended = true;
+            try {
+                let isThinking = false;
 
-                    stream.abort();
-                    clearInterval(interval);
+                for await (const chunk of stream) {
 
-                    const diff = Math.abs(new Date().getSeconds() - waitMessage.date);
-                    messageText += `\n\nДумал ${diff}s`;
+                    const content = chunk.response;
 
-                    await editMessageText(chatId, waitMessage.message_id, messageText);
-                    await oldReplyToMessage(waitMessage, "Закончил лишь часть 😉");
-                    break;
+                    if (content === "<think>" || chunk.thinking) {
+                        if (!isThinking) {
+                            await bot.editMessageText({
+                                chat_id: chatId,
+                                message_id: waitMessage.message_id,
+                                text: "🤔 Размышляю...",
+                                parse_mode: "Markdown",
+                            }).catch(logError);
+                        }
+
+                        isThinking = true;
+                    }
+
+                    if (!isThinking) {
+                        currentText += content;
+                    }
+
+                    if (isThinking && !chunk.thinking) {
+                        currentText += content;
+                    }
+
+                    if (content === "</think>" || !chunk.thinking) {
+                        isThinking = false;
+                    }
+
+                    if (currentText.length > 4096) {
+                        currentText = currentText.slice(0, 4093) + "...";
+                        shouldBreak = true;
+                    }
+
+                    if (getOllamaRequest(uuid).done) {
+                        shouldBreak = true;
+                    }
+
+                    if (shouldBreak || chunk.done) {
+                        console.log("messageText", currentText);
+                        console.log("length", currentText.length);
+
+                        if (shouldBreak) {
+                            console.log("break", true);
+                        } else {
+                            console.log("ended", true);
+                        }
+
+                        const diff = Math.abs(Date.now() - startTime) / 1000;
+
+                        await editor.tick();
+                        await editor.stop();
+
+                        console.log(`aborted request ${uuid}:`, abortOllamaRequest(uuid));
+
+                        waitMessage.reply_to_message = msg;
+                        waitMessage.text = currentText;
+                        await MessageStore.put(waitMessage);
+                        await oldReplyToMessage(waitMessage, `⏱️ ${diff}s`);
+                        break;
+                    }
                 }
-
-                if (chunk.done) {
-                    console.log("messageText", messageText);
-                    console.log("length", messageText.length);
-                    console.log("ended", true);
-                    ended = true;
-                    clearInterval(interval);
-
-                    const diff = Math.abs(Date.now() / 1000 - waitMessage.date);
-                    messageText += `\n\nДумал ${diff}s`;
-
-                    await editMessageText(chatId, waitMessage.message_id, messageText);
-                    await oldReplyToMessage(waitMessage, "Закончил 😉");
-                }
+            } finally {
+                await bot.editMessageReplyMarkup({
+                    chat_id: chatId,
+                    message_id: waitMessage.message_id,
+                    reply_markup: {inline_keyboard: []}
+                }).catch(logError);
             }
         } catch (error) {
+            if (error.message.toLowerCase().includes("aborted")) return;
+
+            await bot.editMessageReplyMarkup({
+                chat_id: chatId,
+                message_id: waitMessage.message_id,
+                reply_markup: {inline_keyboard: []}
+            }).catch(logError);
+
             console.error(error);
-            await editMessageText(chatId, waitMessage.message_id, `Произошла ошибка!\n${error.toString()}`)
-                .catch(async (e) => {
-                    await editMessageText(chatId, waitMessage.message_id, `Произошла ошибка!\n${e.toString()}`).catch(ignore);
-                });
+            await oldReplyToMessage(waitMessage, `Произошла ошибка!\n${error.toString()}`).catch(logError);
         }
     }
 }
