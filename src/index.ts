@@ -69,6 +69,7 @@ import {MistralListModels} from "./commands/mistral-list-models";
 import {GeminiListModels} from "./commands/gemini-list-models";
 import {GeminiGetModel} from "./commands/gemini-get-model";
 import {GeminiSetModel} from "./commands/gemini-set-model";
+import {Debug} from "./commands/debug";
 
 process.setUncaughtExceptionCaptureCallback(console.error);
 
@@ -150,6 +151,7 @@ export const chatCommands: ChatCommand[] = [
     new Dice(),
     new Title(),
     new Transliteration(),
+    new Debug(),
 
     new AdminsAdd(),
     new AdminsRemove(),
