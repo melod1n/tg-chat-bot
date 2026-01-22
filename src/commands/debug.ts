@@ -5,6 +5,9 @@ import {Requirement} from "../base/requirement";
 import {logError, replyToMessage} from "../util/utils";
 
 export class Debug extends ChatCommand {
+    title = "/debug";
+    description = "Returns msg (or reply) as json";
+
     requirements = Requirements.Build(Requirement.BOT_ADMIN);
 
     async execute(msg: Message): Promise<void> {
