@@ -23,10 +23,11 @@ export class Shutdown extends ChatCommand {
 
     requirements = Requirements.Build(Requirement.BOT_CREATOR);
 
-    async execute(msg: Message): Promise<void> {
+    async execute(msg: Message, match?: RegExpExecArray): Promise<void> {
         await bot.sendMessage({chat_id: msg.chat.id, text: "..."}).catch(logError);
 
-        if (msg.chat.type !== "private" && !msg.text.toLowerCase().startsWith("/shutdown now")) {
+        const now = match?.[3]?.toLowerCase() === "now";
+        if (msg.chat.type !== "private" && !now) {
             for (const text of texts) {
                 await delay(randomValue(timings));
                 await bot.sendMessage({chat_id: msg.chat.id, text: text}).catch(logError);
