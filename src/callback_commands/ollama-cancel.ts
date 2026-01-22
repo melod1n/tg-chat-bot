@@ -27,6 +27,8 @@ export class OllamaCancel extends CallbackCommand {
 
             const aborted = abortOllamaRequest(uuid);
             console.log(`aborted request ${uuid}:`, aborted);
+        } else {
+            console.log(`no request with uuid "${uuid}" found`);
         }
 
         let msg: StoredMessage | null = null;
@@ -35,6 +37,8 @@ export class OllamaCancel extends CallbackCommand {
         } catch (e) {
             logError(e);
         }
+
+        console.log(`Message for ${chatId}-${messageId}:`, msg);
 
         let content: string | null = null;
 

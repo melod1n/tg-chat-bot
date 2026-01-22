@@ -4,7 +4,7 @@ import {CallbackCommand} from "../base/callback-command";
 import {CallbackQuery, InlineKeyboardMarkup, Message, ParseMode, PhotoSize, User} from "typescript-telegram-bot-api";
 import {Environment} from "../common/environment";
 import {TelegramError} from "typescript-telegram-bot-api/dist/errors";
-import {bot, botUser, getOllamaRequest, messageDao, setSystemInfo} from "../index";
+import {bot, botUser, messageDao, setSystemInfo} from "../index";
 import os from "os";
 import axios from "axios";
 import {MessagePart} from "../common/message-part";
@@ -750,7 +750,7 @@ export function startIntervalEditor(params: {
     intervalMs: number;
     getText: () => string;
     editFn: (text: string) => Promise<void>;
-    onStop: () => Promise<void>;
+    onStop?: () => Promise<void>;
 }) {
     let lastSent = "";
     let stopped = false;
@@ -778,8 +778,7 @@ export function startIntervalEditor(params: {
         stop: async () => {
             stopped = true;
             clearInterval(timer);
-            await tick();
-            await params.onStop();
+            await params.onStop?.();
         },
     };
 }
