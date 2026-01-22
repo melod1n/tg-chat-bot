@@ -1,5 +1,5 @@
 import {ChatCommand} from "../base/chat-command";
-import {getRandomInt, logError, oldSendMessage} from "../util/utils";
+import {getRandomInt, logError, replyToMessage} from "../util/utils";
 import {Message} from "typescript-telegram-bot-api";
 
 export class RandomString extends ChatCommand {
@@ -22,6 +22,10 @@ export class RandomString extends ChatCommand {
             result += characters.charAt(getRandomInt(characters.length));
         }
 
-        await oldSendMessage(msg, result).catch(logError);
+        await replyToMessage({
+            message: msg,
+            text: "<blockquote expandable>" + result + "</blockquote>",
+            parse_mode: "HTML"
+        }).catch(logError);
     }
 }
