@@ -118,16 +118,9 @@ export class OllamaChat extends ChatCommand {
                                 "Markdown",
                                 isOver ? {inline_keyboard: []} : cancelMarkup
                             ).catch(logError);
-                            console.log("Thinking:\n");
                         }
 
                         isThinking = true;
-                    }
-
-                    if (chunk.message.thinking) {
-                        console.log(chunk.message.thinking);
-                    } else {
-                        console.log(chunk.message.content);
                     }
 
                     if (!isThinking) {
