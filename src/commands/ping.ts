@@ -7,15 +7,19 @@ export class Ping extends ChatCommand {
     description = "Ping between received and sent message";
 
     async execute(msg: Message) {
-        const d = new Date();
+        let d = new Date();
         const u = (n: number): string => n > 9 ? n.toString() : `0${n}`;
         const date = `${u(d.getDay())}.${u(d.getMonth() + 1)}.${d.getFullYear()}`;
         const time = `${u(d.getHours())}:${u(d.getMinutes())}:${u(d.getSeconds())}:${u(d.getMilliseconds())}`;
 
-        const msgDate = msg.date;
+        const mDate = msg.date;
         const nowDate = new Date().getTime() / 1000;
-        const diff = nowDate - msgDate;
+        const diff = nowDate - mDate;
         const tgPing = diff.toFixed(2);
+
+        d = new Date(mDate * 1000);
+        const msgDate = `${u(d.getDay())}.${u(d.getMonth() + 1)}.${d.getFullYear()}`;
+        const msgTime = `${u(d.getHours())}:${u(d.getMinutes())}:${u(d.getSeconds())}:${u(d.getMilliseconds())}`;
 
         const then = Date.now();
         await sendMessage({message: msg, text: "pong"}).catch(logError);
@@ -29,6 +33,9 @@ export class Ping extends ChatCommand {
                     "```ping\n" +
                     `TG: ${tgPing}ms\n` +
                     `API  ${msgSendDiff}ms\n\n` +
+
+                    `🗓️ Message date: ${msgDate}\n` +
+                    `🕒 Message time: ${msgTime}\n\n` +
                     `🗓️ Local date : ${date}\n` +
                     `🕒 Local time: ${time}` +
                     "```",
