@@ -66,7 +66,7 @@ export class Quote extends ChatCommand {
 
             const entities = reply.entities ?? reply.caption_entities ?? [];
 
-            const png = await renderQuoteCard(quote, reply, entities);
+            const png = await renderQuoteCard(msg, quote, reply, entities);
             await bot.sendPhoto({
                 chat_id: chatId,
                 photo: png,
@@ -600,6 +600,7 @@ function fitQuoteToBox(ctx: SKRSContext2D, segments: Segment[], boxW: number, bo
 }
 
 async function getBackground(
+    msg: Message,
     reply: Message,
     W: number,
     H: number,
@@ -608,7 +609,7 @@ async function getBackground(
 ): Promise<Buffer> {
     let src: Buffer | null = null;
 
-    const photoArr = reply.photo as PhotoSize[] | undefined;
+    const photoArr = (msg.photo || reply.photo) as PhotoSize[] | undefined;
     const msgPhoto = photoArr && photoArr.length ? photoArr[photoArr.length - 1] : undefined;
 
     if (msgPhoto?.file_id) {
@@ -637,7 +638,7 @@ async function getBackground(
         .toBuffer();
 }
 
-async function renderQuoteCard(quote: string, reply: Message, entities: MessageEntity[]) {
+async function renderQuoteCard(msg: Message, quote: string, reply: Message, entities: MessageEntity[]) {
     const W = 1280;
     const H = 720;
 
@@ -655,7 +656,7 @@ async function renderQuoteCard(quote: string, reply: Message, entities: MessageE
     const yyyy = String(date.getFullYear());
     const dateStr = `${dd}.${mm}.${yyyy}`;
 
-    const bgBuf = await getBackground(reply, W, H, author, forwarded);
+    const bgBuf = await getBackground(msg, reply, W, H, author, forwarded);
 
     const canvas = createCanvas(W, H);
     const c = canvas.getContext("2d");
