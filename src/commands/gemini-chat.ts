@@ -13,6 +13,7 @@ import {
     oldReplyToMessage,
     startIntervalEditor
 } from "../util/utils";
+import fs from "node:fs";
 
 export class GeminiChat extends ChatCommand {
     command = "gemini";
@@ -52,6 +53,27 @@ export class GeminiChat extends ChatCommand {
 
         chatContent = chatContent.trim();
 
+        const input = [];
+        input.push(
+            {
+                type: "text",
+                text: chatContent
+            }
+        );
+
+        if (messageParts[0].images?.length) {
+            const images = messageParts[0].images;
+
+            images.forEach(image=>{
+                const base64Image = Buffer.from(fs.readFileSync(image)).toString("base64");
+                input.push({
+                    type: "image",
+                    data: base64Image,
+                    mime_type: "image/png"
+                });
+            });
+        }
+
         let waitMessage: Message;
 
         const startTime = Date.now();
@@ -66,9 +88,10 @@ export class GeminiChat extends ChatCommand {
                 }
             });
 
-            const stream = await googleAi.models.generateContentStream({
+            const stream = await googleAi.interactions.create({
                 model: Environment.GEMINI_MODEL,
-                contents: chatContent,
+                input: input,
+                stream: true
             });
 
             let currentText = "";
@@ -99,21 +122,29 @@ export class GeminiChat extends ChatCommand {
             await editor.tick();
 
             try {
-                for await (const chunk of stream) {
-                    const text = chunk.text;
-                    currentText += text;
+                for await (const event of stream) {
+                    switch (event.event_type) {
+                        case "content.delta":
+                            switch (event.delta?.type) {
+                                case "text": {
+                                    const text = event.delta.text;
+                                    currentText += text;
 
-                    if (currentText.length > 4096) {
-                        currentText = currentText.slice(0, 4093) + "...";
-                        shouldBreak = true;
-                    }
+                                    if (currentText.length > 4096) {
+                                        currentText = currentText.slice(0, 4093) + "...";
+                                        shouldBreak = true;
+                                    }
 
-                    console.log("messageText", currentText);
-                    console.log("length", currentText.length);
+                                    console.log("messageText", currentText);
+                                    console.log("length", currentText.length);
 
-                    if (shouldBreak) {
-                        console.log("break", true);
-                        break;
+                                    if (shouldBreak) {
+                                        console.log("break", true);
+                                        break;
+                                    }
+                                    break;
+                                }
+                            }
                     }
                 }
             } finally {
