@@ -1,6 +1,6 @@
 import {ChatCommand} from "../base/chat-command";
 import {Message} from "typescript-telegram-bot-api";
-import {logError, oldReplyToMessage} from "../util/utils";
+import {logError, oldReplyToMessage, randomValue} from "../util/utils";
 
 const EN =
     "`qwertyuiop[]asdfghjkl;'zxcvbnm,./" +
@@ -49,32 +49,8 @@ export function detectScript(text: string): ScriptGuess {
     }
 
     if (cyr === 0 && lat === 0) return "unknown";
-    if (cyr > 0 && lat > 0) return "mixed";
-    return cyr > 0 ? "ru" : "en";
-}
-
-const EN_VOWELS = /[aeiouy]/i;
-const RU_VOWELS = /[аеёиоуыэюя]/i;
-
-function vowelRatio(text: string, reLetter: RegExp, reVowel: RegExp): number {
-    let letters = 0, vowels = 0;
-    for (const ch of text) {
-        if (reLetter.test(ch)) {
-            letters++;
-            if (reVowel.test(ch)) vowels++;
-        }
-    }
-    return letters === 0 ? 0 : vowels / letters;
-}
-
-function looksLikeEnglish(text: string): boolean {
-    const ratio = vowelRatio(text, /\p{Script=Latin}/u, EN_VOWELS);
-    return ratio >= 0.20;
-}
-
-function looksLikeRussian(text: string): boolean {
-    const ratio = vowelRatio(text, /\p{Script=Cyrillic}/u, RU_VOWELS);
-    return ratio >= 0.18;
+    if (cyr === lat) return "mixed";
+    return cyr > lat ? "ru" : "en";
 }
 
 export function fixLayoutAuto(
@@ -82,15 +58,16 @@ export function fixLayoutAuto(
     toRuLayout: (s: string) => string,
     toEnLayout: (s: string) => string,
 ): string {
-    const guess = detectScript(text);
+    let guess = detectScript(text);
+    if (guess === "mixed") {
+        guess = randomValue([true, false]) ? "ru" : "en";
+    }
 
     if (guess === "en") {
-        if (looksLikeEnglish(text)) return text;
         return toRuLayout(text);
     }
 
     if (guess === "ru") {
-        if (looksLikeRussian(text)) return text;
         return toEnLayout(text);
     }
 
@@ -98,6 +75,8 @@ export function fixLayoutAuto(
 }
 
 export class Transliteration extends ChatCommand {
+    command = ["transliteration", "tr"];
+
     title = "/tr [text or reply]";
     description = "Transliteration EN <--> RU";
 
