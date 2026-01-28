@@ -1,5 +1,5 @@
 # ---- build ----
-FROM node:20-alpine AS builder
+FROM node:lts-trixie-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json tsconfig*.json ./
@@ -11,7 +11,7 @@ COPY assets ./assets
 RUN npx tsc -p tsconfig.build.json
 
 # ---- runtime ----
-FROM node:20-alpine AS runner
+FROM node:lts-trixie-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
