@@ -1,11 +1,12 @@
 # Telegram Chat Bot
 
+Bot for Telegram with a lot of commands and AI (Ollama/Gemini/Mistral) written in TypeScript + NodeJS/Bun runtime + Drizzle ORM (SQLite DB)
 
 ## Quick Start
 
 ```bash
 cp .env.example .env
-# Edit .env: add BOT_TOKEN and CREATOR_ID or
+# Edit .env: add BOT_TOKEN, CREATOR_ID and configure optional AI models (GEMINI_API_KEY, MISTRAL_API_KEY, OLLAMA_ADDRESS)
 ```
 
 **With Bun (Recommended):**
@@ -24,12 +25,14 @@ npm run build && npm start
 
 **With Docker:**
 ```bash
+# Set IS_DOCKER=true in .env
 docker build -f Dockerfile -t tg-bot .
 docker run -d --env-file .env -v $(pwd)/data:/config/data tg-bot
 ```
 
 **With Docker (Bun):**
 ```bash
+# Set IS_DOCKER=true in .env
 docker build -f Dockerfile-bun -t tg-bot-bun .
 docker run -d --env-file .env -v $(pwd)/data:/config/data tg-bot-bun
 ```
