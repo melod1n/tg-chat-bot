@@ -1,0 +1,11 @@
+services:
+ tgchatbot:
+    container_name: tgchatbot
+    image: ghcr.io/melod1n/tg-chat-bot:latest
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Moscow
+    volumes:
+      - ./config:/config

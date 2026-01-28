@@ -23,6 +23,11 @@ npx drizzle-kit generate && npx drizzle-kit migrate
 npm run build && npm start
 ```
 
+**With Docker Compose:**
+```bash
+docker compose up -d
+```
+
 **With Docker:**
 ```bash
 docker build -f Dockerfile -t tg-bot .
