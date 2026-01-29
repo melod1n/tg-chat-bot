@@ -178,7 +178,11 @@ export async function checkRequirements(cmd: ChatCommand | CallbackCommand | nul
     if (reqs.isRequiresSameUser()) {
         let originalFromId: number | null;
         try {
-            originalFromId = (await MessageStore.get(chatId, messageId))?.fromId;
+            const queryMessage = await MessageStore.get(chatId, messageId);
+            if (queryMessage && queryMessage.replyToMessageId) {
+                const originalMessage = await MessageStore.get(chatId, queryMessage.replyToMessageId);
+                originalFromId = originalMessage?.fromId;
+            }
         } catch (e) {
             logError(e);
             originalFromId = null;
