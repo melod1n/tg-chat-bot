@@ -11,7 +11,7 @@
     "@google/genai": "^1.38.0",
     "@libsql/client": "^0.17.0",
     "@mistralai/mistralai": "^1.13.0",
-    "@napi-rs/canvas": "^0.1.88",
+    "@napi-rs/canvas": "^0.1.89",
     "axios": "^1.13.4",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^1.0.0-beta.9-e89174b",
