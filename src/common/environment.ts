@@ -27,6 +27,7 @@ export class Environment {
 
     static OLLAMA_ADDRESS?: string;
     static OLLAMA_MODEL?: string;
+    static OLLAMA_IMAGE_MODEL?: string;
     static OLLAMA_API_KEY?: string;
 
     static GEMINI_API_KEY?: string;
@@ -61,7 +62,8 @@ export class Environment {
         Environment.SYSTEM_PROMPT = process.env.SYSTEM_PROMPT?.trim();
 
         Environment.OLLAMA_ADDRESS = process.env.OLLAMA_ADDRESS;
-        Environment.OLLAMA_MODEL = process.env.OLLAMA_MODEL;
+        Environment.OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gemma3:4b";
+        Environment.OLLAMA_IMAGE_MODEL = process.env.OLLAMA_IMAGE_MODEL || "gemma3:4b";
         Environment.OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
 
         Environment.GEMINI_API_KEY = process.env.GEMINI_API_KEY;

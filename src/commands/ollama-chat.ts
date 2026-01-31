@@ -57,7 +57,7 @@ export class OllamaChat extends ChatCommand {
 
             if (imagesCount) {
                 try {
-                    const modelInfo = await chatCommands.find(c => c instanceof OllamaGetModel).loadModelInfo();
+                    const modelInfo = await chatCommands.find(c => c instanceof OllamaGetModel).loadImageModelInfo();
                     if (modelInfo) {
                         const caps = modelInfo.capabilities || [];
                         if (!caps.includes("vision")) {
@@ -84,7 +84,7 @@ export class OllamaChat extends ChatCommand {
             });
 
             const stream = await ollama.chat({
-                model: Environment.OLLAMA_MODEL,
+                model: imagesCount ? Environment.OLLAMA_IMAGE_MODEL : Environment.OLLAMA_MODEL,
                 stream: true,
                 think: false,
                 messages: chatMessages,
