@@ -1,6 +1,7 @@
 import path from "node:path";
 import {saveData} from "../db/database";
 import {Answers} from "../model/answers";
+import {ifTrue} from "../util/utils";
 
 export class Environment {
     static BOT_TOKEN: string;
@@ -28,6 +29,7 @@ export class Environment {
     static OLLAMA_ADDRESS?: string;
     static OLLAMA_MODEL?: string;
     static OLLAMA_IMAGE_MODEL?: string;
+    static OLLAMA_THINK_MODEL?: string;
     static OLLAMA_API_KEY?: string;
 
     static GEMINI_API_KEY?: string;
@@ -45,17 +47,17 @@ export class Environment {
 
     static load() {
         Environment.BOT_TOKEN = process.env.BOT_TOKEN;
-        Environment.TEST_ENVIRONMENT = process.env.TEST_ENVIRONMENT === "true";
+        Environment.TEST_ENVIRONMENT = ifTrue(process.env.TEST_ENVIRONMENT);
         Environment.CHAT_IDS_WHITELIST = new Set(process.env.CHAT_IDS_WHITELIST?.split(",")?.map(e => parseInt(e.trim(), 10)) || []);
         Environment.BOT_PREFIX = process.env.BOT_PREFIX || "";
         Environment.CREATOR_ID = parseInt(process.env.CREATOR_ID || "");
-        Environment.IS_DOCKER = process.env.IS_DOCKER == "true";
+        Environment.IS_DOCKER = ifTrue(process.env.IS_DOCKER);
         Environment.DATA_PATH = Environment.IS_DOCKER ? "/" + path.join("config", "data") : "data";
         Environment.DB_PATH = "file:" + path.join(Environment.DATA_PATH, Environment.DB_FILE_NAME);
 
-        Environment.ONLY_FOR_CREATOR_MODE = process.env.ONLY_FOR_CREATOR_MODE == "true";
+        Environment.ONLY_FOR_CREATOR_MODE = ifTrue(process.env.ONLY_FOR_CREATOR_MODE);
 
-        Environment.USE_NAMES_IN_PROMPT = process.env.USE_NAMES_IN_PROMPT == "true";
+        Environment.USE_NAMES_IN_PROMPT = ifTrue(process.env.USE_NAMES_IN_PROMPT);
 
         Environment.MAX_PHOTO_SIZE = Number(process.env.MAX_PHOTO_SIZE || "1280");
 
@@ -63,7 +65,8 @@ export class Environment {
 
         Environment.OLLAMA_ADDRESS = process.env.OLLAMA_ADDRESS;
         Environment.OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gemma3:4b";
-        Environment.OLLAMA_IMAGE_MODEL = process.env.OLLAMA_IMAGE_MODEL || "gemma3:4b";
+        Environment.OLLAMA_IMAGE_MODEL = process.env.OLLAMA_IMAGE_MODEL || Environment.OLLAMA_MODEL;
+        Environment.OLLAMA_THINK_MODEL = process.env.OLLAMA_THINK_MODEL || Environment.OLLAMA_MODEL;
         Environment.OLLAMA_API_KEY = process.env.OLLAMA_API_KEY;
 
         Environment.GEMINI_API_KEY = process.env.GEMINI_API_KEY;

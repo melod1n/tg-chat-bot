@@ -11,14 +11,48 @@ export class OllamaGetModel extends ChatCommand {
 
     async execute(msg: Message): Promise<void> {
         try {
-            let modelInfo = await this.loadModelInfo();
-            const modelText = "```Text\n" + this.getModelText(Environment.OLLAMA_MODEL, modelInfo) + "```";
-            modelInfo = await this.loadImageModelInfo();
-            const imageModelText = "```Image\n" + this.getModelText(Environment.OLLAMA_IMAGE_MODEL, modelInfo) + "```";
+            const model = Environment.OLLAMA_MODEL;
+            const imageModel = Environment.OLLAMA_IMAGE_MODEL;
+            const thinkModel = Environment.OLLAMA_THINK_MODEL;
+
+            const promises: (Promise<ShowResponse | null> | null)[] = [this.loadModelInfo()];
+
+            if (imageModel && imageModel !== model) {
+                promises.push(this.loadImageModelInfo());
+            } else {
+                promises.push(null);
+            }
+
+            if (thinkModel && thinkModel !== model) {
+                promises.push(this.loadThinkModelInfo());
+            } else {
+                promises.push(null);
+            }
+
+            const infos = await Promise.all(promises);
+
+            let modelInfo = infos[0];
+            const modelText = "```Text\n" + this.getModelText(model, modelInfo) + "```";
+
+            modelInfo = infos[1];
+            const imageModelText = modelInfo ?
+                "```Image\n" + this.getModelText(imageModel, modelInfo) + "```" : null;
+
+            modelInfo = infos[2];
+            const thinkModelText = modelInfo ?
+                "```Think\n" + this.getModelText(thinkModel, modelInfo) + "```" : null;
+
+            const modelInfos = [modelText];
+            if (imageModelText) {
+                modelInfos.push(imageModelText);
+            }
+            if (thinkModelText) {
+                modelInfos.push(thinkModelText);
+            }
 
             await replyToMessage({
                 message: msg,
-                text: modelText + "\n\n" + imageModelText,
+                text: modelInfos.join("\n\n"),
                 parse_mode: "Markdown"
             }).catch(logError);
 
@@ -43,5 +77,9 @@ export class OllamaGetModel extends ChatCommand {
 
     async loadImageModelInfo(): Promise<ShowResponse | null> {
         return ollama.show({model: Environment.OLLAMA_IMAGE_MODEL});
+    }
+
+    async loadThinkModelInfo(): Promise<ShowResponse | null> {
+        return ollama.show({model: Environment.OLLAMA_THINK_MODEL});
     }
 }

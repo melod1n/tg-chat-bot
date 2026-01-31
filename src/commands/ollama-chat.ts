@@ -16,7 +16,7 @@ import {OllamaCancel} from "../callback_commands/ollama-cancel";
 import {OllamaGetModel} from "./ollama-get-model";
 
 export class OllamaChat extends ChatCommand {
-    command = "ollama";
+    command = ["ollama", "ollamathink"];
     argsMode = "required" as const;
 
     title = "/ollama";
@@ -24,10 +24,10 @@ export class OllamaChat extends ChatCommand {
 
     async execute(msg: Message, match?: RegExpExecArray | null): Promise<void> {
         console.log("match", match);
-        return this.executeOllama(msg, match?.[3]);
+        return this.executeOllama(msg, match?.[3], match?.[1]?.toLowerCase()?.startsWith("ollamathink"));
     }
 
-    async executeOllama(msg: Message, text: string): Promise<void> {
+    async executeOllama(msg: Message, text: string, think: boolean = false): Promise<void> {
         if (!text || text.trim().length === 0) return;
 
         const chatId = msg.chat.id;
@@ -55,7 +55,7 @@ export class OllamaChat extends ChatCommand {
                 return total + (curr.images?.length ?? 0);
             }, 0);
 
-            if (imagesCount) {
+            if (!think && imagesCount) {
                 try {
                     const modelInfo = await chatCommands.find(c => c instanceof OllamaGetModel).loadImageModelInfo();
                     if (modelInfo) {
@@ -73,20 +73,38 @@ export class OllamaChat extends ChatCommand {
                 }
             }
 
+            if (think) {
+                try {
+                    const modelInfo = await chatCommands.find(c => c instanceof OllamaGetModel).loadThinkModelInfo();
+                    if (modelInfo) {
+                        const caps = modelInfo.capabilities || [];
+                        if (!caps.includes("thinking")) {
+                            await replyToMessage({
+                                message: msg,
+                                text: "Моя текущая модель не умеет размышлять 🥹"
+                            });
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    logError(e);
+                }
+            }
+
             const uuid = crypto.randomUUID();
             const cancelMarkup = {inline_keyboard: [[Cancel.withData(new OllamaCancel().data + " " + uuid).asButton()]]};
 
             waitMessage = await replyToMessage({
                 message: msg,
-                text: imagesCount ?
+                text: (!think && imagesCount) ?
                     imagesCount > 1 ? Environment.analyzingPicturesText : Environment.analyzingPictureText
                     : Environment.waitText
             });
 
             const stream = await ollama.chat({
-                model: imagesCount ? Environment.OLLAMA_IMAGE_MODEL : Environment.OLLAMA_MODEL,
+                model: think ? Environment.OLLAMA_THINK_MODEL : imagesCount ? Environment.OLLAMA_IMAGE_MODEL : Environment.OLLAMA_MODEL,
                 stream: true,
-                think: false,
+                think: think,
                 messages: chatMessages,
             });
 
@@ -153,6 +171,7 @@ export class OllamaChat extends ChatCommand {
                                 message_id: waitMessage.message_id,
                                 text: "🤔 Размышляю...",
                                 parse_mode: "Markdown",
+                                reply_markup: cancelMarkup
                             }).catch(logError);
                         }
 

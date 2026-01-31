@@ -27,6 +27,8 @@ import {MessageStore} from "../common/message-store";
 import {SystemInfo} from "../commands/system-info";
 import {PrefixResponse} from "../commands/prefix-response";
 import {OllamaChat} from "../commands/ollama-chat";
+import {getYouTubeVideoId} from "./ytdl";
+import {YouTubeDownload} from "../commands/youtube-download";
 
 export const ignore = () => {
 };
@@ -469,10 +471,14 @@ export function extractTextMessage(msg: Message | StoredMessage | string): strin
 export function cutPrefixes(msg: Message | StoredMessage | string): string {
     const prefixes = [
         Environment.BOT_PREFIX,
+        `/ollamathink@${botUser.username}`,
+        "/ollamathink",
+        `/ollama@${botUser.username}`,
+        "/ollama",
         `/gemini@${botUser.username}`,
         "/gemini",
         `/mistral@${botUser.username}`,
-        "/mistral"
+        "/mistral",
     ];
 
     const text = extractTextMessage(msg);
@@ -510,7 +516,7 @@ export async function loadImagesIfExists(msg: Message | StoredMessage): Promise<
 
     const maxSize = await mapPhotoSizeToMax(getPhotoMaxSize(msg.photo));
     if (maxSize) {
-        const imagePath = path.join(Environment.DATA_PATH, "temp");
+        const imagePath = path.join(Environment.DATA_PATH, "photo");
         if (!fs.existsSync(imagePath)) {
             fs.mkdirSync(imagePath);
         }
@@ -539,7 +545,7 @@ export async function loadImagesIfExists(msg: Message | StoredMessage): Promise<
 export async function loadImagesFromFileIds(sizes: PhotoSize[]): Promise<string[] | null> {
     if (!sizes?.length) return null;
 
-    const dataPath = path.join(Environment.DATA_PATH, "temp");
+    const dataPath = path.join(Environment.DATA_PATH, "photo");
     if (!fs.existsSync(dataPath)) {
         fs.mkdirSync(dataPath);
     }
@@ -988,20 +994,25 @@ export async function mapPhotoSizeToMax(size: PhotoSize): Promise<PhotoMaxSize |
     };
 }
 
-export async function imageToBase64(filePath: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-        fs.readFile(filePath, (err, data) => {
-            if (err) {
-                return reject(err);
-            }
-            const base64Image = Buffer.from(data).toString("base64");
-            const dataUrl = `data:image/jpeg;base64,${base64Image}`;
-            resolve(dataUrl);
-        });
-    });
+export async function imageToBase64(filePath: string, withMimeType: boolean = false): Promise<string | null> {
+    if (!fs.existsSync(filePath)) return null;
+
+    try {
+        const file = fs.readFileSync(filePath);
+        const base64 = Buffer.from(file).toString("base64");
+        if (withMimeType) {
+            return `data:image/jpeg;base64,${base64}`;
+        }
+
+        return base64;
+    } catch (e) {
+        logError(e);
+        return null;
+    }
 }
 
-export function ifTrue(exp?: never): boolean {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function ifTrue(exp?: any): boolean {
     if (!exp) return false;
 
     return ["true", "t", "y", 1, "1"].includes(exp);
@@ -1093,12 +1104,34 @@ export async function processNewMessage(msg: Message) {
         return;
     }
 
+    const textToCheck = startsWithPrefix ? messageWithoutPrefix : cmdText;
+    if (msg.entities) {
+        const urlEntities = msg.entities.filter(e => e.type === "url");
+        if (urlEntities.length) {
+            for (const e of urlEntities) {
+                const url = msg.text.substring(e.offset, e.offset + e.length);
+                // TODO: 31/01/2026, Danil Nikolaev: implement proper checking
+                try {
+                    getYouTubeVideoId(url);
+
+                    const yt = chatCommands.find(e => e instanceof YouTubeDownload);
+                    if (await checkRequirements(yt, msg)) {
+                        await yt.downloadYouTubeVideo(msg, url);
+                    }
+                    return;
+                } catch (e) {
+                    logError(e);
+                }
+            }
+        }
+    }
+
     if (!startsWithPrefix && msg.chat.type !== "private") return;
     if (msg.chat.type === "private" && !Environment.ADMIN_IDS.has(msg.chat.id)) return;
 
     const chat = chatCommands.find(e => e instanceof OllamaChat);
     if (await checkRequirements(chat, msg)) {
-        await chat.executeOllama(msg, startsWithPrefix ? messageWithoutPrefix : cmdText);
+        await chat.executeOllama(msg, textToCheck);
     }
 }
 
@@ -1121,5 +1154,5 @@ async function processAlbum(groupId: string): Promise<string[]> {
 }
 
 export function photoPathByUniqueId(uniqueId: string): string {
-    return path.join(Environment.DATA_PATH, "temp", uniqueId + ".jpg");
+    return path.join(Environment.DATA_PATH, "photo", uniqueId + ".jpg");
 }

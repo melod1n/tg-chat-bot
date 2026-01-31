@@ -81,6 +81,7 @@ export class MistralChat extends ChatCommand {
 
             const stream = await mistralAi.chat.stream({
                 model: Environment.MISTRAL_MODEL,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 messages: chatMessages as any
             });
 

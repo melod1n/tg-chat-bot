@@ -3,8 +3,10 @@ import {Environment} from "./common/environment";
 import {InlineQueryResult, TelegramBot, User} from "typescript-telegram-bot-api";
 import {ChatCommand} from "./base/chat-command";
 import {
+    delay,
     extractTextMessage,
     findAndExecuteCallbackCommand,
+    ignore,
     initSystemSpecs,
     logError,
     processNewMessage
@@ -66,6 +68,11 @@ import {GeminiGetModel} from "./commands/gemini-get-model";
 import {GeminiSetModel} from "./commands/gemini-set-model";
 import {Debug} from "./commands/debug";
 import {GeminiGenerateImage} from "./commands/gemini-generate-image";
+import {YouTubeDownload} from "./commands/youtube-download";
+import fs from "node:fs";
+import path from "node:path";
+import {setInterval} from "node:timers";
+import {clearUpVideoFolder} from "./util/files";
 
 process.setUncaughtExceptionCaptureCallback(logError);
 
@@ -148,6 +155,8 @@ export const chatCommands: ChatCommand[] = [
 
     new Shutdown(),
     new Leave(),
+
+    new YouTubeDownload()
 ];
 
 export const callbackCommands: CallbackCommand[] = [
@@ -187,13 +196,37 @@ if (Environment.MISTRAL_API_KEY) {
     );
 }
 
+export const photoDir = path.join(Environment.DATA_PATH, "photo");
+export const videoDir = path.join(Environment.DATA_PATH, "video");
+
 async function main() {
+    const start = Date.now();
+
     console.log(
         `TEST_ENVIRONMENT: ${Environment.TEST_ENVIRONMENT}\n` +
         `DATA_PATH: ${Environment.DATA_PATH}\n` +
         `MAX_PHOTO_SIZE: ${Environment.MAX_PHOTO_SIZE}\n` +
         `ONLY_FOR_CREATOR: ${Environment.ONLY_FOR_CREATOR_MODE}`
     );
+
+    fs.mkdir(photoDir, ignore);
+    fs.mkdir(videoDir, ignore);
+
+    const now = new Date();
+
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    midnight.setDate(now.getDate() + 1);
+
+    const diff = midnight.getTime() - now.getTime();
+    console.log("Clearing up videos will be started in " + diff + "ms");
+
+    delay(diff).then(() => {
+        setInterval(() => {
+            console.log("Started clearing up videos");
+            clearUpVideoFolder();
+        }, 1000 * 60 * 60 * 24);
+    });
 
     const commands = chatCommands.filter(cmd => {
         return cmd.title && cmd.title.startsWith("/") && cmd.title.split(" ").length === 1 && cmd.description;
@@ -216,7 +249,9 @@ async function main() {
         await UserStore.put(botUser);
         await bot.startPolling();
 
-        console.log("Bot started!");
+        const end = Date.now();
+        const diff = Math.abs(end - start);
+        console.log(`Bot started in ${diff}ms!`);
     } catch (error) {
         logError(error);
     }
