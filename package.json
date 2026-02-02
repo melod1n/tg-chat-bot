@@ -8,7 +8,7 @@
     "bun:start": "bun run dist/index.js"
   },
   "dependencies": {
-    "@google/genai": "^1.38.0",
+    "@google/genai": "^1.39.0",
     "@libsql/client": "^0.17.0",
     "@mistralai/mistralai": "^1.13.0",
     "@napi-rs/canvas": "^0.1.89",
