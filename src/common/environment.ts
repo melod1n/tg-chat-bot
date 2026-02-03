@@ -80,7 +80,7 @@ export class Environment {
         Environment.MISTRAL_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
 
         Environment.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-        Environment.OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+        Environment.OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-nano";
     }
 
     static setAdmins(admins: Set<number>) {
