@@ -19,6 +19,9 @@ export class OpenAIChat extends ChatCommand {
 
     requirements = Requirements.Build(Requirement.BOT_CREATOR);
 
+    title = "/chatGPT";
+    description = "Chat with AI (ChatGPT)";
+
     async execute(msg: Message, match?: RegExpExecArray): Promise<void> {
         console.log("OpenAI Chat: ", match);
         return this.executeOpenAI(msg, match?.[3]);
