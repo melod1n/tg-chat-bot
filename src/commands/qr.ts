@@ -1,10 +1,10 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {extractMessagePayload, logError, replyToMessage} from "../util/utils";
 import {bot, botUser} from "../index";
 import QRCode from "qrcode";
 
-export class Qr extends ChatCommand {
+export class Qr extends Command {
 
     argsMode = "optional" as const;
 

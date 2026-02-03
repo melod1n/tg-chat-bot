@@ -2,24 +2,25 @@ import {Command} from "../base/command";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {Message} from "typescript-telegram-bot-api";
-import {mistralAi} from "../index";
-import {logError, oldReplyToMessage, replyToMessage} from "../util/utils";
+import {openAi} from "../index";
+import {logError, replyToMessage} from "../util/utils";
 
-export class MistralListModels extends Command {
-    title = "/mistralListModels";
-    description = "List all Mistral models";
+export class OpenAIListModels extends Command {
+    title = "/openAIListModels";
+    description = "List all OpenAI models";
 
     requirements = Requirements.Build(Requirement.BOT_CREATOR);
 
     async execute(msg: Message): Promise<void> {
         try {
-            const listResponse = await mistralAi.models.list();
+            const listResponse = await openAi.models.list();
             console.log(listResponse);
 
             const modelsString = listResponse.data
-                .sort((a, b) => a.name.localeCompare(b.name))
                 .map(e => `${e.id}`)
-                .join("\n");
+                .sort((a, b) => a.localeCompare(b))
+                .join("\n")
+                .substring(0, 4000);
 
             const text = "Доступные модели:\n\n" + "<blockquote expandable>" + modelsString + "</blockquote>";
 
@@ -30,7 +31,7 @@ export class MistralListModels extends Command {
             });
         } catch (e) {
             logError(e);
-            await oldReplyToMessage(msg, "Не получилось загрузить список моделей").catch(logError);
+            await replyToMessage({message: msg, text: "Не получилось загрузить список моделей"}).catch(logError);
         }
     }
 }

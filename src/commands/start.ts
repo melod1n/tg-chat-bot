@@ -1,13 +1,13 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
-import {chatCommands} from "../index";
+import {commands} from "../index";
 import {Help} from "./help";
 
-export class Start extends ChatCommand {
+export class Start extends Command {
     title = "/start";
     description = "Start the bot";
 
     async execute(msg: Message): Promise<void> {
-        await chatCommands.find(e => e instanceof Help).execute(msg);
+        await commands.find(e => e instanceof Help).execute(msg);
     }
 }

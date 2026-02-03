@@ -1,6 +1,5 @@
-import {ChatCommand} from "../base/chat-command";
 import {Message} from "typescript-telegram-bot-api";
-import {abortOllamaRequest, bot, chatCommands, getOllamaRequest, ollama, ollamaRequests} from "../index";
+import {abortOllamaRequest, bot, commands, getOllamaRequest, ollama, ollamaRequests} from "../index";
 import {
     collectReplyChainText,
     escapeMarkdownV2Text,
@@ -14,9 +13,10 @@ import {MessageStore} from "../common/message-store";
 import {Cancel} from "../callback_commands/cancel";
 import {OllamaCancel} from "../callback_commands/ollama-cancel";
 import {OllamaGetModel} from "./ollama-get-model";
+import {ChatCommand} from "../base/chat-command";
 
 export class OllamaChat extends ChatCommand {
-    command = ["ollama", "ollamathink"];
+    command = ["ollamaThink", "ollama"];
     argsMode = "required" as const;
 
     title = "/ollama";
@@ -57,7 +57,7 @@ export class OllamaChat extends ChatCommand {
 
             if (!think && imagesCount) {
                 try {
-                    const modelInfo = await chatCommands.find(c => c instanceof OllamaGetModel).loadImageModelInfo();
+                    const modelInfo = await commands.find(c => c instanceof OllamaGetModel).loadImageModelInfo();
                     if (modelInfo) {
                         const caps = modelInfo.capabilities || [];
                         if (!caps.includes("vision")) {
@@ -75,7 +75,7 @@ export class OllamaChat extends ChatCommand {
 
             if (think) {
                 try {
-                    const modelInfo = await chatCommands.find(c => c instanceof OllamaGetModel).loadThinkModelInfo();
+                    const modelInfo = await commands.find(c => c instanceof OllamaGetModel).loadThinkModelInfo();
                     if (modelInfo) {
                         const caps = modelInfo.capabilities || [];
                         if (!caps.includes("thinking")) {

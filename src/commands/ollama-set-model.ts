@@ -1,12 +1,12 @@
 import {Message} from "typescript-telegram-bot-api";
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Environment} from "../common/environment";
 import {logError, replyToMessage} from "../util/utils";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {ollama} from "../index";
 
-export class OllamaSetModel extends ChatCommand {
+export class OllamaSetModel extends Command {
     argsMode = "required" as const;
 
     title = "/ollamaSetModel";

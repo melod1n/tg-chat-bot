@@ -1,11 +1,11 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {boolToEmoji, logError, replyToMessage} from "../util/utils";
 import {Environment} from "../common/environment";
 import {ollama} from "../index";
 import {ShowResponse} from "ollama";
 
-export class OllamaGetModel extends ChatCommand {
+export class OllamaGetModel extends Command {
     title = "/ollamaGetModel";
     description = "Ollama model info";
 

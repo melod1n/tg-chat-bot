@@ -1,5 +1,5 @@
 import * as si from "systeminformation";
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {CallbackCommand} from "../base/callback-command";
 import {
     CallbackQuery,
@@ -12,7 +12,7 @@ import {
 } from "typescript-telegram-bot-api";
 import {Environment} from "../common/environment";
 import {TelegramError} from "typescript-telegram-bot-api/dist/errors";
-import {bot, botUser, chatCommands, messageDao} from "../index";
+import {bot, botUser, commands, messageDao} from "../index";
 import os from "os";
 import axios from "axios";
 import {MessagePart} from "../common/message-part";
@@ -29,6 +29,7 @@ import {PrefixResponse} from "../commands/prefix-response";
 import {OllamaChat} from "../commands/ollama-chat";
 import {getYouTubeVideoId} from "./ytdl";
 import {YouTubeDownload} from "../commands/youtube-download";
+import {ChatCommand} from "../base/chat-command";
 
 export const ignore = () => {
 };
@@ -54,10 +55,10 @@ export const errorPlaceholder = async (msg: Message) => {
 };
 
 export function searchChatCommand(
-    commands: ChatCommand[],
+    commands: Command[],
     text: string,
     botUsername: string = botUser.username
-): ChatCommand | null {
+): Command | null {
     for (const command of commands) {
         const match = command.finalRegexp.exec(text);
         if (!match) continue;
@@ -85,7 +86,7 @@ export function searchCallbackCommand(commands: CallbackCommand[], data: string)
     return null;
 }
 
-export async function checkRequirements(cmd: ChatCommand | CallbackCommand | null, msg?: Message, cb?: CallbackQuery): Promise<boolean> {
+export async function checkRequirements(cmd: Command | CallbackCommand | null, msg?: Message, cb?: CallbackQuery): Promise<boolean> {
     if (!cmd) return false;
     if (!msg && !cb) return false;
 
@@ -202,7 +203,7 @@ export async function checkRequirements(cmd: ChatCommand | CallbackCommand | nul
     return true;
 }
 
-export async function executeChatCommand(cmd: ChatCommand | null, msg: Message, text: string): Promise<boolean> {
+export async function executeChatCommand(cmd: Command | null, msg: Message, text: string): Promise<boolean> {
     if (!cmd) return false;
 
     if (!await checkRequirements(cmd, msg)) return false;
@@ -353,7 +354,7 @@ export function randomValue<T>(list: T[]): T {
     return list[Math.floor(Math.random() * list.length)];
 }
 
-export function chatCommandToString(cmd: ChatCommand): string {
+export function chatCommandToString(cmd: Command): string {
     if (!cmd.title && !cmd.description) {
         return "";
     }
@@ -469,17 +470,22 @@ export function extractTextMessage(msg: Message | StoredMessage | string): strin
 }
 
 export function cutPrefixes(msg: Message | StoredMessage | string): string {
-    const prefixes = [
-        Environment.BOT_PREFIX,
-        `/ollamathink@${botUser.username}`,
-        "/ollamathink",
-        `/ollama@${botUser.username}`,
-        "/ollama",
-        `/gemini@${botUser.username}`,
-        "/gemini",
-        `/mistral@${botUser.username}`,
-        "/mistral",
-    ];
+    const chatCommands = commands.filter(c => c instanceof ChatCommand);
+
+    const prefixes = [Environment.BOT_PREFIX];
+    const pushPrefix = (c: string) => {
+        prefixes.push(`/${c}@${botUser.username}`);
+        prefixes.push(`/${c}`);
+    };
+
+    chatCommands.forEach((cmd) => {
+        const command = cmd.command;
+        if (Array.isArray(command)) {
+            command.forEach(pushPrefix);
+        } else {
+            pushPrefix(command);
+        }
+    });
 
     const text = extractTextMessage(msg);
     let newText = text;
@@ -974,13 +980,11 @@ export function getPhotoMaxSize(photos: PhotoSize[], target: number = Environmen
         return photos[0];
     }
 
-    const max = photos.reduce((prev, cur) => {
+    return photos.reduce((prev, cur) => {
         if (!prev) return cur;
 
         return cur.width * cur.height > prev.width * prev.height ? cur : prev;
     }, null);
-
-    return max;
 }
 
 export async function mapPhotoSizeToMax(size: PhotoSize): Promise<PhotoMaxSize | null> {
@@ -1084,7 +1088,7 @@ export async function processNewMessage(msg: Message) {
 
     const then = Date.now();
 
-    const cmd = searchChatCommand(chatCommands, cmdText);
+    const cmd = searchChatCommand(commands, cmdText);
     const executed = await executeChatCommand(cmd, msg, cmdText);
 
     const now = Date.now();
@@ -1114,7 +1118,7 @@ export async function processNewMessage(msg: Message) {
                 try {
                     getYouTubeVideoId(url);
 
-                    const yt = chatCommands.find(e => e instanceof YouTubeDownload);
+                    const yt = commands.find(e => e instanceof YouTubeDownload);
                     if (await checkRequirements(yt, msg)) {
                         await yt.downloadYouTubeVideo(msg, url);
                     }
@@ -1129,7 +1133,7 @@ export async function processNewMessage(msg: Message) {
     if (!startsWithPrefix && msg.chat.type !== "private") return;
     if (msg.chat.type === "private" && !Environment.ADMIN_IDS.has(msg.chat.id)) return;
 
-    const chat = chatCommands.find(e => e instanceof OllamaChat);
+    const chat = commands.find(e => e instanceof OllamaChat);
     if (await checkRequirements(chat, msg)) {
         await chat.executeOllama(msg, textToCheck);
     }

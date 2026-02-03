@@ -1,4 +1,4 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
@@ -15,7 +15,7 @@ const texts = [
 const timings = [1500, 2500];
 const timer = [3, 2, 1];
 
-export class Shutdown extends ChatCommand {
+export class Shutdown extends Command {
     title = "/shutdown";
     description = "Self-destruction sequence for bot (shutdown)";
 

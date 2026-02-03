@@ -1,8 +1,8 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {logError, oldReplyToMessage, randomValue} from "../util/utils";
 
-export class Choice extends ChatCommand {
+export class Choice extends Command {
     command = "choice";
     argsMode = "required" as const;
 

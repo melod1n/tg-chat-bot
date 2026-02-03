@@ -1,4 +1,4 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {fullName, logError, oldSendMessage} from "../util/utils";
@@ -6,7 +6,7 @@ import {Message} from "typescript-telegram-bot-api";
 import {botUser} from "../index";
 import {Environment} from "../common/environment";
 
-export class Unignore extends ChatCommand {
+export class Unignore extends Command {
     title = "/unignore";
     description = "Bot will start responding to the user";
     requirements = Requirements.Build(

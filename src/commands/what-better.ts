@@ -1,9 +1,9 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {logError, oldSendMessage, randomValue} from "../util/utils";
 import {Message} from "typescript-telegram-bot-api";
 import {Environment} from "../common/environment";
 
-export class WhatBetter extends ChatCommand {
+export class WhatBetter extends Command {
     command = ["what", "что"];
     argsMode = "required" as const;
 

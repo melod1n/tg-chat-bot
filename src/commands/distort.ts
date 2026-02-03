@@ -1,9 +1,9 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {downloadTelegramFile, extractImageFileId, logError, oldReplyToMessage, waveDistortSharp} from "../util/utils";
 import {bot} from "../index";
 
-export class Distort extends ChatCommand {
+export class Distort extends Command {
     command = "distort";
     argsMode = "optional" as const;
 
@@ -40,7 +40,10 @@ export class Distort extends ChatCommand {
             await bot.sendChatAction({chat_id: chatId, action: "upload_photo"});
 
             const file = await bot.getFile({file_id: fileId});
-            if (!file.file_path) throw new Error("No file_path in Telegram getFile response");
+            if (!file.file_path) {
+                // noinspection ExceptionCaughtLocallyJS
+                throw new Error("No file_path in Telegram getFile response");
+            }
 
             const inputBuf = await downloadTelegramFile(file.file_path);
 

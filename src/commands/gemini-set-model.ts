@@ -1,11 +1,11 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {Message} from "typescript-telegram-bot-api";
 import {Environment} from "../common/environment";
 import {logError, replyToMessage} from "../util/utils";
 
-export class GeminiSetModel extends ChatCommand {
+export class GeminiSetModel extends Command {
     argsMode = "required" as const;
 
     title = "/geminiSetModel";

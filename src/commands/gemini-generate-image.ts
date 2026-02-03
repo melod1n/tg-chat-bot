@@ -1,4 +1,4 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {Message} from "typescript-telegram-bot-api";
@@ -6,7 +6,7 @@ import {googleAi} from "../index";
 import {logError, replyToMessage} from "../util/utils";
 import {Environment} from "../common/environment";
 
-export class GeminiGenerateImage extends ChatCommand {
+export class GeminiGenerateImage extends Command {
     command = "geminiGenImage";
     argsMode = "required" as const;
 

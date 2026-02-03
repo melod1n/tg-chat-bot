@@ -39,6 +39,9 @@ export class Environment {
     static MISTRAL_API_KEY?: string;
     static MISTRAL_MODEL: string;
 
+    static OPENAI_API_KEY?: string;
+    static OPENAI_MODEL: string;
+
     static waitText = "⏳ Дайте-ка подумать...";
     static analyzingPictureText = "🔍 Внимательно изучаю изображение...";
     static analyzingPicturesText = "🔍 Внимательно изучаю изображения...";
@@ -75,6 +78,9 @@ export class Environment {
 
         Environment.MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
         Environment.MISTRAL_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
+
+        Environment.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+        Environment.OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
     }
 
     static setAdmins(admins: Set<number>) {
@@ -134,5 +140,9 @@ export class Environment {
 
     static setMistralModel(newModel: string) {
         Environment.MISTRAL_MODEL = newModel;
+    }
+
+    static setOpenAIModel(newModel: string) {
+        Environment.OPENAI_MODEL = newModel;
     }
 }

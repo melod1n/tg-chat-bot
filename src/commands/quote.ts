@@ -4,7 +4,7 @@ import emojiRegex from "emoji-regex";
 
 import {createCanvas, GlobalFonts, type Image as CanvasImage, loadImage, SKRSContext2D} from "@napi-rs/canvas";
 import {Message, MessageEntity, PhotoSize} from "typescript-telegram-bot-api";
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {bot, botUser} from "../index";
 import {
     getChatAvatar,
@@ -37,7 +37,7 @@ try {
     logError(e);
 }
 
-export class Quote extends ChatCommand {
+export class Quote extends Command {
     command = ["cit", "citation", "q", "quote"];
     argsMode = "none" as const;
 

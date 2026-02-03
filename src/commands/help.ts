@@ -1,10 +1,10 @@
 import {Message} from "typescript-telegram-bot-api";
 import {chatCommandToString, delay, logError, sendMessage} from "../util/utils";
-import {ChatCommand} from "../base/chat-command";
-import {chatCommands} from "../index";
+import {Command} from "../base/command";
+import {commands} from "../index";
 import {TelegramError} from "typescript-telegram-bot-api/dist/errors";
 
-export class Help extends ChatCommand {
+export class Help extends Command {
     command = ["h", "help"];
 
     title = "/help";
@@ -13,7 +13,7 @@ export class Help extends ChatCommand {
     async execute(msg: Message) {
         let text = "Commands:\n\n";
 
-        chatCommands.forEach(c => {
+        commands.forEach(c => {
             text += `${chatCommandToString(c)}\n`;
         });
 

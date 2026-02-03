@@ -1,4 +1,4 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {Message} from "typescript-telegram-bot-api";
@@ -7,7 +7,7 @@ import {WebSearchResponse} from "../model/web-search-response";
 import {editMessageText, logError} from "../util/utils";
 import {Environment} from "../common/environment";
 
-export class OllamaSearch extends ChatCommand {
+export class OllamaSearch extends Command {
     command = ["s", "search"];
     argsMode = "required" as const;
 

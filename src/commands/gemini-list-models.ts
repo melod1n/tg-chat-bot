@@ -1,11 +1,11 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {Message} from "typescript-telegram-bot-api";
 import {googleAi} from "../index";
 import {logError, replyToMessage} from "../util/utils";
 
-export class GeminiListModels extends ChatCommand {
+export class GeminiListModels extends Command {
     title = "/geminiListModels";
     description = "List all Gemini models";
 

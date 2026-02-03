@@ -1,10 +1,10 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {bot} from "../index";
 
-export class Leave extends ChatCommand {
+export class Leave extends Command {
     title = "/leave";
     description = "Bot will leave current chat";
 

@@ -1,11 +1,11 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {logError, replyToMessage} from "../util/utils";
 import {Environment} from "../common/environment";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 
-export class MistralGetModel extends ChatCommand {
+export class MistralGetModel extends Command {
     title = "/mistralGetModel";
     description = "Get current Mistral model";
 

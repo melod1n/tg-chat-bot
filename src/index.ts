@@ -1,7 +1,7 @@
 import "dotenv/config";
 import {Environment} from "./common/environment";
 import {InlineQueryResult, TelegramBot, User} from "typescript-telegram-bot-api";
-import {ChatCommand} from "./base/chat-command";
+import {Command} from "./base/command";
 import {
     delay,
     extractTextMessage,
@@ -73,6 +73,11 @@ import fs from "node:fs";
 import path from "node:path";
 import {setInterval} from "node:timers";
 import {clearUpVideoFolder} from "./util/files";
+import {OpenAI} from "openai";
+import {OpenAIChat} from "./commands/openai-chat";
+import {OpenAIListModels} from "./commands/openai-list-models";
+import {OpenAIGetModel} from "./commands/openai-get-model";
+import {OpenAISetModel} from "./commands/openai-set-model";
 
 process.setUncaughtExceptionCaptureCallback(logError);
 
@@ -87,6 +92,7 @@ export let botUser: User;
 
 export const googleAi = new GoogleGenAI({apiKey: Environment.GEMINI_API_KEY});
 export const mistralAi = new Mistral({apiKey: Environment.MISTRAL_API_KEY});
+export const openAi = new OpenAI({apiKey: Environment.OPENAI_API_KEY});
 
 export const ollama = new Ollama({
     host: Environment.OLLAMA_ADDRESS,
@@ -120,7 +126,7 @@ export function abortOllamaRequest(uuid: string): boolean {
     }
 }
 
-export const chatCommands: ChatCommand[] = [
+export const commands: Command[] = [
     new Start(),
     new Help(),
     new Test(),
@@ -164,7 +170,7 @@ export const callbackCommands: CallbackCommand[] = [
 ];
 
 if (Environment.OLLAMA_ADDRESS && Environment.OLLAMA_MODEL && Environment.SYSTEM_PROMPT) {
-    chatCommands.push(
+    commands.push(
         new OllamaChat(),
         new OllamaPrompt(),
         new OllamaListModels(),
@@ -174,11 +180,11 @@ if (Environment.OLLAMA_ADDRESS && Environment.OLLAMA_MODEL && Environment.SYSTEM
 }
 
 if (Environment.OLLAMA_API_KEY) {
-    chatCommands.push(new OllamaSearch());
+    commands.push(new OllamaSearch());
 }
 
 if (Environment.GEMINI_API_KEY) {
-    chatCommands.push(
+    commands.push(
         new GeminiChat(),
         new GeminiListModels(),
         new GeminiGetModel(),
@@ -188,11 +194,20 @@ if (Environment.GEMINI_API_KEY) {
 }
 
 if (Environment.MISTRAL_API_KEY) {
-    chatCommands.push(
+    commands.push(
         new MistralChat(),
         new MistralListModels(),
         new MistralGetModel(),
         new MistralSetModel()
+    );
+}
+
+if (Environment.OPENAI_API_KEY) {
+    commands.push(
+        new OpenAIChat(),
+        new OpenAIListModels(),
+        new OpenAIGetModel(),
+        new OpenAISetModel(),
     );
 }
 
@@ -228,7 +243,7 @@ async function main() {
         }, 1000 * 60 * 60 * 24);
     });
 
-    const commands = chatCommands.filter(cmd => {
+    const cmds = commands.filter(cmd => {
         return cmd.title && cmd.title.startsWith("/") && cmd.title.split(" ").length === 1 && cmd.description;
     }).map(cmd => {
         return {
@@ -242,7 +257,7 @@ async function main() {
             [
                 initSystemSpecs(), readData(), retrieveAnswers(),
                 bot.getMe(),
-                bot.setMyCommands({commands: commands, scope: {type: "default"}})
+                bot.setMyCommands({commands: cmds, scope: {type: "default"}})
             ]
         );
         botUser = results[3];

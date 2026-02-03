@@ -1,10 +1,10 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {logError, replyToMessage} from "../util/utils";
 
-export class Debug extends ChatCommand {
+export class Debug extends Command {
     title = "/debug";
     description = "Returns msg (or reply) as json";
 

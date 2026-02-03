@@ -1,8 +1,8 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {logError, oldReplyToMessage} from "../util/utils";
 
-export class Id extends ChatCommand {
+export class Id extends Command {
     title = "/id";
     description = "ID of chat, user and reply (if replied to any message)";
 

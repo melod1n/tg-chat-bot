@@ -1,11 +1,11 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {logError, oldReplyToMessage} from "../util/utils";
 import {bot} from "../index";
 
-export class Title extends ChatCommand {
+export class Title extends Command {
     command = "title";
     argsMode = "required" as const;
 

@@ -1,4 +1,3 @@
-import {ChatCommand} from "../base/chat-command";
 import {Message} from "typescript-telegram-bot-api";
 import {Environment} from "../common/environment";
 import {bot, googleAi} from "../index";
@@ -13,6 +12,7 @@ import {
     oldReplyToMessage,
     startIntervalEditor
 } from "../util/utils";
+import {ChatCommand} from "../base/chat-command";
 
 export class GeminiChat extends ChatCommand {
     command = "gemini";

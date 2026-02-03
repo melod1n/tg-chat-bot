@@ -1,8 +1,8 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {logError, replyToMessage} from "../util/utils";
 import {Message} from "typescript-telegram-bot-api";
 
-export class SystemInfo extends ChatCommand {
+export class SystemInfo extends Command {
     title = "/systemInfo";
     description = "System information";
 

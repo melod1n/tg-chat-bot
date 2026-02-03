@@ -1,8 +1,8 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {getRandomInt, getRangedRandomInt, logError, oldReplyToMessage} from "../util/utils";
 import {Message} from "typescript-telegram-bot-api";
 
-export class When extends ChatCommand {
+export class When extends Command {
     command = ["when", "когда"];
     argsMode = "required" as const;
 

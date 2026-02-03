@@ -1,4 +1,4 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {abortOllamaRequest, bot, getOllamaRequest, ollama, ollamaRequests} from "../index";
 import {escapeMarkdownV2Text, logError, oldReplyToMessage, startIntervalEditor} from "../util/utils";
@@ -9,7 +9,7 @@ import {Cancel} from "../callback_commands/cancel";
 import {OllamaCancel} from "../callback_commands/ollama-cancel";
 import {MessageStore} from "../common/message-store";
 
-export class OllamaPrompt extends ChatCommand {
+export class OllamaPrompt extends Command {
     command = "ollamaPrompt";
     argsMode = "required" as const;
 

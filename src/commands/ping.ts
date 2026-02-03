@@ -1,8 +1,8 @@
 import {logError, sendMessage} from "../util/utils";
 import {Message} from "typescript-telegram-bot-api";
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 
-export class Ping extends ChatCommand {
+export class Ping extends Command {
     title = "/ping";
     description = "Ping between received and sent message";
 

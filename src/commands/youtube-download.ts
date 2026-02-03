@@ -1,10 +1,10 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {logError, replyToMessage} from "../util/utils";
 import {bot} from "../index";
 import {downloadVideoFromYouTube} from "../util/ytdl";
 
-export class YouTubeDownload extends ChatCommand {
+export class YouTubeDownload extends Command {
     command = ["ytdl", "youtube"];
     argsMode = "required" as const;
 

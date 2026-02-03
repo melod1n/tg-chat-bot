@@ -1,8 +1,8 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {getUptime, logError, oldSendMessage} from "../util/utils";
 
-export class Uptime extends ChatCommand {
+export class Uptime extends Command {
     title = "/uptime";
     description = "Bot's uptime";
 

@@ -1,4 +1,4 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
@@ -6,7 +6,7 @@ import {fullName, logError, oldSendMessage} from "../util/utils";
 import {Environment} from "../common/environment";
 import {botUser} from "../index";
 
-export class AdminsRemove extends ChatCommand {
+export class AdminsRemove extends Command {
     command = "removeAdmin";
     title = "/removeAdmin";
     description = "Remove user from admins";

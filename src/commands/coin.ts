@@ -1,8 +1,8 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {getRangedRandomInt, logError, oldReplyToMessage} from "../util/utils";
 
-export class Coin extends ChatCommand {
+export class Coin extends Command {
     title = "/coin";
     description = "Heads or tails";
 

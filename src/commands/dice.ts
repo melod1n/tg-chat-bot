@@ -1,4 +1,4 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {logError, randomValue} from "../util/utils";
 import {bot} from "../index";
@@ -6,7 +6,7 @@ import {bot} from "../index";
 type DiceEmoji = "🎲" | "🎯" | "🏀" | "⚽" | "🎳" | "🎰";
 const emojis = ["🎲", "🎯", "🏀", "⚽", "🎳", "🎰"];
 
-export class Dice extends ChatCommand {
+export class Dice extends Command {
     title = "/dice";
     description = "Sends random or specific dice";
 

@@ -1,8 +1,8 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {getRandomInt, logError, replyToMessage} from "../util/utils";
 import {Message} from "typescript-telegram-bot-api";
 
-export class RandomString extends ChatCommand {
+export class RandomString extends Command {
     argsMode = "optional" as const;
 
     title = "/randomString";

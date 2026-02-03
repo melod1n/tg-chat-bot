@@ -1,4 +1,4 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {Message} from "typescript-telegram-bot-api";
@@ -6,7 +6,7 @@ import {fullName, logError, oldSendMessage} from "../util/utils";
 import {botUser} from "../index";
 import {Environment} from "../common/environment";
 
-export class Ignore extends ChatCommand {
+export class Ignore extends Command {
     title = "/ignore";
     description = "Bot will ignore user";
 

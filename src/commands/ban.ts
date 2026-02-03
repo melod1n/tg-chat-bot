@@ -1,4 +1,4 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {Message} from "typescript-telegram-bot-api";
@@ -6,7 +6,7 @@ import {bot, botUser} from "../index";
 import {fullName, logError, oldSendMessage, oldReplyToMessage} from "../util/utils";
 import {Environment} from "../common/environment";
 
-export class Ban extends ChatCommand {
+export class Ban extends Command {
     title = "/ban [reply]";
     description = "ban user from chat";
 

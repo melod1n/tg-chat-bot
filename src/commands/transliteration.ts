@@ -1,4 +1,4 @@
-import {ChatCommand} from "../base/chat-command";
+import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {logError, oldReplyToMessage, randomValue} from "../util/utils";
 
@@ -74,7 +74,7 @@ export function fixLayoutAuto(
     return text;
 }
 
-export class Transliteration extends ChatCommand {
+export class Transliteration extends Command {
     command = ["transliteration", "tr"];
 
     title = "/tr [text or reply]";
