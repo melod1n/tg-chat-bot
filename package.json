@@ -14,7 +14,7 @@
     "@napi-rs/canvas": "^0.1.89",
     "axios": "^1.13.4",
     "dotenv": "^17.2.3",
-    "drizzle-orm": "^1.0.0-beta.12-5845444",
+    "drizzle-orm": "^1.0.0-beta.13-5204f18",
     "emoji-regex": "^10.6.0",
     "ollama": "^0.6.3",
     "openai": "^6.17.0",
