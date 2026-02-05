@@ -10,7 +10,7 @@
   "dependencies": {
     "@google/genai": "^1.39.0",
     "@libsql/client": "^0.17.0",
-    "@mistralai/mistralai": "^1.13.0",
+    "@mistralai/mistralai": "^1.14.0",
     "@napi-rs/canvas": "^0.1.89",
     "axios": "^1.13.4",
     "dotenv": "^17.2.3",
