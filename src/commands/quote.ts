@@ -2,7 +2,7 @@ import axios from "axios";
 import sharp from "sharp";
 import emojiRegex from "emoji-regex";
 
-import {createCanvas, GlobalFonts, type Image as CanvasImage, loadImage, SKRSContext2D} from "@napi-rs/canvas";
+import {createCanvas, GlobalFonts, Image, type Image as CanvasImage, loadImage, SKRSContext2D} from "@napi-rs/canvas";
 import {Message, MessageEntity, PhotoSize} from "typescript-telegram-bot-api";
 import {Command} from "../base/command";
 import {bot, botUser} from "../index";
@@ -84,6 +84,13 @@ export class Quote extends Command {
 const emojiCache = new Map<string, CanvasImage>();
 const customEmojiCache = new Map<string, CanvasImage>();
 
+function appleEmojiUrl(emoji: string): string {
+    const codePoints = [...emoji]
+        .map(char => char.codePointAt(0)!.toString(16))
+        .join("-");
+    return `https://cdn.jsdelivr.net/npm/emoji-datasource-apple@15.0.0/img/apple/64/${codePoints}.png`;
+}
+
 function githubEmojiUrl(emoji: string): string {
     const codePoints = [...emoji]
         .map(char => char.codePointAt(0)!.toString(16))
@@ -97,27 +104,24 @@ function twemojiUrl(emoji: string) {
 }
 
 async function loadEmoji(emoji: string): Promise<CanvasImage> {
-    let url = githubEmojiUrl(emoji);
-    let cached = emojiCache.get(url);
-    if (cached) return cached;
-
-    try {
+    const downloadAndCache = async (url: string): Promise<Image> => {
         const res = await axios.get<ArrayBuffer>(url, {responseType: "arraybuffer"});
         const img = await loadImage(Buffer.from(res.data));
         emojiCache.set(url, img);
         return img;
-    } catch (e) {
-        logError(e);
+    };
 
-        url = twemojiUrl(emoji);
-        cached = emojiCache.get(url);
+    const checkIfCached = async (emoji: string, emojiToUrl: (emoji: string) => string): Promise<CanvasImage> => {
+        const url = emojiToUrl(emoji);
+        const cached = emojiCache.get(url);
         if (cached) return cached;
+        return await downloadAndCache(emojiToUrl(emoji));
+    };
 
+    const sources = [appleEmojiUrl, githubEmojiUrl, twemojiUrl];
+    for (const source of sources) {
         try {
-            const res = await axios.get<ArrayBuffer>(url, {responseType: "arraybuffer"});
-            const img = await loadImage(Buffer.from(res.data));
-            emojiCache.set(url, img);
-            return img;
+            return await checkIfCached(emoji, source);
         } catch (e) {
             logError(e);
         }
