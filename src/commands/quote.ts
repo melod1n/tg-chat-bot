@@ -64,7 +64,7 @@ export class Quote extends Command {
 
             const quote = quoteRaw.length ? quoteRaw : "…";
 
-            const entities = reply.entities ?? reply.caption_entities ?? [];
+            const entities = msg.quote ? msg.quote.entities : reply.entities ?? reply.caption_entities ?? [];
 
             const png = await renderQuoteCard(msg, quote, reply, entities);
             await bot.sendPhoto({
