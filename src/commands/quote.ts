@@ -84,7 +84,7 @@ export class Quote extends Command {
 const emojiCache = new Map<string, CanvasImage>();
 const customEmojiCache = new Map<string, CanvasImage>();
 
-function appleEmojiUrl(emoji: string): string {
+function githubEmojiUrl(emoji: string): string {
     const codePoints = [...emoji]
         .map(char => char.codePointAt(0)!.toString(16))
         .join("-");
@@ -97,7 +97,7 @@ function twemojiUrl(emoji: string) {
 }
 
 async function loadEmoji(emoji: string): Promise<CanvasImage> {
-    let url = appleEmojiUrl(emoji);
+    let url = githubEmojiUrl(emoji);
     let cached = emojiCache.get(url);
     if (cached) return cached;
 
