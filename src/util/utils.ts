@@ -471,7 +471,10 @@ export async function getUserAvatar(userId: number): Promise<Buffer | null> {
 }
 
 export function extractTextMessage(msg: Message | StoredMessage | string): string | null {
-    const text = (typeof msg === "string" ? msg : isStoredMessage(msg) ? msg.text : msg?.text ?? msg?.caption ?? "").trim();
+    if (!msg) return null;
+    if (typeof msg === "string") return msg;
+
+    const text = (isStoredMessage(msg) ? msg.text : msg.text || msg.caption || "").trim();
     if (text.length === 0) return null;
     return text;
 }
