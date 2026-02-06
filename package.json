@@ -18,7 +18,7 @@
     "emoji-regex": "^10.6.0",
     "ollama": "^0.6.3",
     "openai": "^6.17.0",
-    "puppeteer": "^24.36.1",
+    "puppeteer": "^24.37.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "qrcode": "^1.5.4",
