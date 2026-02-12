@@ -218,6 +218,23 @@ if (Environment.OPENAI_API_KEY) {
 export const photoDir = path.join(Environment.DATA_PATH, "photo");
 export const videoDir = path.join(Environment.DATA_PATH, "video");
 
+let isShuttingDown = false;
+
+async function shutdown(signal: NodeJS.Signals) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    console.log(`Received ${signal}. Stopping bot polling...`);
+
+    try {
+        await bot.stopPolling();
+    } catch (error) {
+        logError(error);
+    } finally {
+        process.exit(0);
+    }
+}
+
 async function main() {
     const start = Date.now();
 
@@ -285,5 +302,13 @@ bot.on("edited_message", processEditedMessage);
 bot.on("message", processNewMessage);
 bot.on("inline_query", processInlineQuery);
 bot.on("callback_query", processCallbackQuery);
+
+process.on("SIGTERM", () => {
+    shutdown("SIGTERM").catch(logError);
+});
+
+process.on("SIGINT", () => {
+    shutdown("SIGINT").catch(logError);
+});
 
 main().catch(logError);
