@@ -79,6 +79,7 @@ import {OpenAIListModels} from "./commands/openai-list-models";
 import {OpenAIGetModel} from "./commands/openai-get-model";
 import {OpenAISetModel} from "./commands/openai-set-model";
 import {Info} from "./commands/info";
+import {OpenAIGenImage} from "./commands/openai-gen-image";
 
 process.setUncaughtExceptionCaptureCallback(logError);
 
@@ -210,6 +211,7 @@ if (Environment.OPENAI_API_KEY) {
         new OpenAIListModels(),
         new OpenAIGetModel(),
         new OpenAISetModel(),
+        new OpenAIGenImage()
     );
 }
 

@@ -45,6 +45,7 @@ export class Environment {
     static OPENAI_BASE_URL?: string;
     static OPENAI_API_KEY?: string;
     static OPENAI_MODEL: string;
+    static OPENAI_IMAGE_MODEL: string;
 
     static waitText = "⏳ Дайте-ка подумать...";
     static analyzingPictureText = "🔍 Внимательно изучаю изображение...";
@@ -93,6 +94,7 @@ export class Environment {
         Environment.OPENAI_BASE_URL = process.env.OPENAI_BASE_URL;
         Environment.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
         Environment.OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-nano";
+        Environment.OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1-mini";
     }
 
     static setAdmins(admins: Set<number>) {
