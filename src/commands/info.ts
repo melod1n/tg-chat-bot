@@ -5,8 +5,9 @@ import {Environment} from "../common/environment";
 import {boolToEmoji, getCurrentModel, getCurrentModelCapabilities, logError, replyToMessage} from "../util/utils";
 import {AiModelCapabilities} from "../model/ai-model-capabilities";
 import {AiProvider} from "../model/ai-provider";
+import {Command} from "../base/command";
 
-export class Info extends ChatCommand {
+export class Info extends Command {
     command = ["info", "v"];
 
     title = "/info";
