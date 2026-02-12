@@ -61,10 +61,10 @@ export class GeminiChat extends ChatCommand {
             }
         );
 
-        if (messageParts[0].images?.length) {
-            const images = messageParts[0].images;
-
-            images.forEach(image => {
+        // TODO: 12/02/2026, Danil Nikolaev: support for multiple images
+        if (messageParts.some(p => p.images?.length)) {
+            const firstImages = messageParts.find(p => p.images?.length)?.images ?? [];
+            firstImages.forEach(image => {
                 input.push({
                     type: "image",
                     data: image,
