@@ -72,7 +72,6 @@ import {YouTubeDownload} from "./commands/youtube-download";
 import fs from "node:fs";
 import path from "node:path";
 import {setInterval} from "node:timers";
-import {clearUpVideoFolder} from "./util/files";
 import {OpenAI} from "openai";
 import {OpenAIChat} from "./commands/openai-chat";
 import {OpenAIListModels} from "./commands/openai-list-models";
@@ -80,6 +79,7 @@ import {OpenAIGetModel} from "./commands/openai-get-model";
 import {OpenAISetModel} from "./commands/openai-set-model";
 import {Info} from "./commands/info";
 import {OpenAIGenImage} from "./commands/openai-gen-image";
+import {clearUpFolderFromOldFiles} from "./util/files";
 
 process.setUncaughtExceptionCaptureCallback(logError);
 
@@ -239,12 +239,15 @@ async function main() {
     midnight.setDate(now.getDate() + 1);
 
     const diff = midnight.getTime() - now.getTime();
-    console.log("Clearing up videos will be started in " + diff + "ms");
+    console.log("Clearing up videos and photos will be started in " + diff + "ms");
 
+    clearUpFolderFromOldFiles(videoDir);
+    clearUpFolderFromOldFiles(photoDir);
     delay(diff).then(() => {
         setInterval(() => {
-            console.log("Started clearing up videos");
-            clearUpVideoFolder();
+            console.log("Started clearing up videos and photos");
+            clearUpFolderFromOldFiles(videoDir);
+            clearUpFolderFromOldFiles(photoDir);
         }, 1000 * 60 * 60 * 24);
     });
 

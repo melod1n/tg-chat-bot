@@ -1,10 +1,9 @@
 import {logError} from "./utils";
 import fs from "node:fs";
-import {videoDir} from "../index";
 import path from "node:path";
 
-export function clearUpVideoFolder() {
-    fs.readdir(videoDir, (err, files) => {
+export function clearUpFolderFromOldFiles(folder: string) {
+    fs.readdir(folder, (err, files) => {
         if (err) {
             logError(err);
             return;
@@ -13,7 +12,7 @@ export function clearUpVideoFolder() {
         const filenamesToDelete: string[] = [];
 
         files.forEach((filename, index) => {
-            fs.stat(path.join(videoDir, filename), (err, stats) => {
+            fs.stat(path.join(folder, filename), (err, stats) => {
                 if (err) {
                     logError(err);
                 } else {
@@ -29,8 +28,10 @@ export function clearUpVideoFolder() {
                         console.log("filenamesToDelete", filenamesToDelete);
                         if (filenamesToDelete.length) {
                             filenamesToDelete.forEach((filename) => {
-                                const fullPath = path.join(videoDir, filename);
-                                fs.rm(fullPath, logError);
+                                const fullPath = path.join(folder, filename);
+                                fs.rm(fullPath, (e) => {
+                                    if (e) logError(e);
+                                });
                             });
                         }
                     }
