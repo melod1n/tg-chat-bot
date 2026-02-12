@@ -78,6 +78,7 @@ import {OpenAIChat} from "./commands/openai-chat";
 import {OpenAIListModels} from "./commands/openai-list-models";
 import {OpenAIGetModel} from "./commands/openai-get-model";
 import {OpenAISetModel} from "./commands/openai-set-model";
+import {Info} from "./commands/info";
 
 process.setUncaughtExceptionCaptureCallback(logError);
 
@@ -155,6 +156,7 @@ export const commands: Command[] = [
     new Title(),
     new Transliteration(),
     new Debug(),
+    new Info(),
 
     new AdminsAdd(),
     new AdminsRemove(),

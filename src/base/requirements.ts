@@ -38,4 +38,8 @@ export class Requirements {
     isRequiresSameUser(): boolean {
         return this.requirements.includes(Requirement.SAME_USER);
     }
+
+    isPublic(): boolean {
+        return !this.isRequiresBotCreator();
+    }
 }
