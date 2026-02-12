@@ -4,7 +4,7 @@ import path from "node:path";
 import {Environment} from "../common/environment";
 
 export function getYouTubeVideoId(url: string): string {
-    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+    const regex = /(?:(?:youtube\.com|music\.youtube\.com)\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts|clip)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
     const match = url.match(regex);
     if (!match || !match[1]) throw new Error("Invalid YouTube or Shorts URL");
     return match[1];
