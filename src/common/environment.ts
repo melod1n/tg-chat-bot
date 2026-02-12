@@ -2,13 +2,7 @@ import path from "node:path";
 import {saveData} from "../db/database";
 import {Answers} from "../model/answers";
 import {ifTrue} from "../util/utils";
-
-export enum AiProvider {
-    OLLAMA = "OLLAMA",
-    GEMINI = "GEMINI",
-    MISTRAL = "MISTRAL",
-    OPENAI = "OPENAI",
-}
+import {AiProvider} from "../model/ai-provider";
 
 export class Environment {
     static BOT_TOKEN: string;
@@ -94,7 +88,7 @@ export class Environment {
         Environment.GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
 
         Environment.MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
-        Environment.MISTRAL_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
+        Environment.MISTRAL_MODEL = process.env.MISTRAL_MODEL || "mistral-tiny-latest";
 
         Environment.OPENAI_BASE_URL = process.env.OPENAI_BASE_URL;
         Environment.OPENAI_API_KEY = process.env.OPENAI_API_KEY;

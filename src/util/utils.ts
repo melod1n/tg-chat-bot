@@ -13,7 +13,7 @@ import {
     PhotoSize,
     User
 } from "typescript-telegram-bot-api";
-import {AiProvider, Environment} from "../common/environment";
+import {Environment} from "../common/environment";
 import {TelegramError} from "typescript-telegram-bot-api/dist/errors";
 import {bot, botUser, callbackCommands, commands, messageDao, ollama} from "../index";
 import os from "os";
@@ -37,6 +37,12 @@ import {WebSearchResponse} from "../model/web-search-response";
 import {GeminiChat} from "../commands/gemini-chat";
 import {MistralChat} from "../commands/mistral-chat";
 import {OpenAIChat} from "../commands/openai-chat";
+import {AiProvider} from "../model/ai-provider";
+import {AiModelCapabilities} from "../model/ai-model-capabilities";
+import {OllamaGetModel} from "../commands/ollama-get-model";
+import {GeminiGetModel} from "../commands/gemini-get-model";
+import {MistralGetModel} from "../commands/mistral-get-model";
+import {OpenAIGetModel} from "../commands/openai-get-model";
 
 export const ignore = () => {
 };
@@ -1058,6 +1064,65 @@ async function processAlbum(groupId: string): Promise<string[]> {
 
 export function photoPathByUniqueId(uniqueId: string): string {
     return path.join(Environment.DATA_PATH, "photo", uniqueId + ".jpg");
+}
+
+export function getCurrentModel(): string {
+    switch (Environment.DEFAULT_AI_PROVIDER) {
+        case AiProvider.OLLAMA:
+            return Environment.OLLAMA_MODEL;
+        case AiProvider.GEMINI:
+            return Environment.GEMINI_MODEL;
+        case AiProvider.MISTRAL:
+            return Environment.MISTRAL_MODEL;
+        case AiProvider.OPENAI:
+            return Environment.OPENAI_MODEL;
+    }
+}
+
+export async function getCurrentModelCapabilities(): Promise<AiModelCapabilities | null> {
+    let promise: Promise<AiModelCapabilities | null> = null;
+    switch (Environment.DEFAULT_AI_PROVIDER) {
+        case AiProvider.OLLAMA: {
+            const ollamaGetModel = commands.find(c => c instanceof OllamaGetModel);
+
+            // eslint-disable-next-line no-async-promise-executor
+            promise = new Promise(async (resolve, reject) => {
+                try {
+                    const result = {
+                        vision: (await ollamaGetModel.loadImageModelInfo()).vision,
+                        ocr: null,
+                        thinking: (await ollamaGetModel.loadThinkModelInfo()).thinking,
+                        tools: (await ollamaGetModel.getModelCapabilities()).tools
+                    };
+                    resolve(result);
+                } catch (e) {
+                    reject(e);
+                }
+            });
+            break;
+        }
+        case AiProvider.GEMINI: {
+            promise = commands.find(c => c instanceof GeminiGetModel).getModelCapabilities();
+            break;
+        }
+        case AiProvider.MISTRAL: {
+            promise = commands.find(c => c instanceof MistralGetModel).getModelCapabilities();
+            break;
+        }
+        case AiProvider.OPENAI: {
+            promise = commands.find(c => c instanceof OpenAIGetModel).getModelCapabilities();
+            break;
+        }
+    }
+
+    if (!promise) return null;
+
+    try {
+        return await promise;
+    } catch (e) {
+        logError(e);
+        return null;
+    }
 }
 
 export async function processMyChatMember(u: ChatMemberUpdated): Promise<void> {

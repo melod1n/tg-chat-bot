@@ -1,11 +1,10 @@
 import {ChatCommand} from "../base/chat-command";
 import {Message} from "typescript-telegram-bot-api";
 import {callbackCommands, commands} from "../index";
-import {AiProvider, Environment} from "../common/environment";
-import {boolToEmoji, logError, replyToMessage} from "../util/utils";
-import {OllamaGetModel} from "./ollama-get-model";
-
-type AiCapabilityInfo = { supported?: boolean, external?: boolean, model?: string };
+import {Environment} from "../common/environment";
+import {boolToEmoji, getCurrentModel, getCurrentModelCapabilities, logError, replyToMessage} from "../util/utils";
+import {AiModelCapabilities} from "../model/ai-model-capabilities";
+import {AiProvider} from "../model/ai-provider";
 
 export class Info extends ChatCommand {
     command = ["info", "v"];
@@ -15,63 +14,17 @@ export class Info extends ChatCommand {
 
     async execute(msg: Message): Promise<void> {
         const aiProvider = Environment.DEFAULT_AI_PROVIDER;
-        let aiModel: string;
-        let aiVisionSupported: AiCapabilityInfo = {};
-        let aiThinkingSupported: AiCapabilityInfo = {};
-        let aiToolsSupported: AiCapabilityInfo = {};
+        const aiModel = getCurrentModel();
+        let aiModelCapabilities: AiModelCapabilities = {};
 
         try {
-            switch (aiProvider) {
-                case AiProvider.OLLAMA: {
-                    const ollamaGetModel = commands.find(c => c instanceof OllamaGetModel);
-
-                    aiModel = Environment.OLLAMA_MODEL;
-                    aiVisionSupported = {
-                        supported: (await ollamaGetModel.loadImageModelInfo()).capabilities.includes("vision"),
-                        external: Environment.OLLAMA_IMAGE_MODEL !== Environment.OLLAMA_MODEL,
-                        model: Environment.OLLAMA_IMAGE_MODEL
-                    };
-
-                    aiThinkingSupported = {
-                        supported: (await ollamaGetModel.loadThinkModelInfo()).capabilities.includes("thinking"),
-                        external: Environment.OLLAMA_THINK_MODEL !== Environment.OLLAMA_MODEL,
-                        model: Environment.OLLAMA_THINK_MODEL
-                    };
-
-                    aiToolsSupported = {
-                        supported: (await ollamaGetModel.loadModelInfo()).capabilities.includes("tools"),
-                        external: false,
-                        model: Environment.OLLAMA_MODEL
-                    };
-                    break;
-                }
-                case AiProvider.GEMINI:
-                    aiModel = Environment.GEMINI_MODEL;
-
-                    aiVisionSupported = {supported: true};
-                    aiThinkingSupported = {};
-                    aiToolsSupported = {};
-                    break;
-                case AiProvider.MISTRAL:
-                    aiModel = Environment.MISTRAL_MODEL;
-
-                    aiVisionSupported = {supported: true};
-                    aiThinkingSupported = {};
-                    aiToolsSupported = {};
-                    break;
-                case AiProvider.OPENAI:
-                    aiModel = Environment.OPENAI_MODEL;
-
-                    aiVisionSupported = {};
-                    aiThinkingSupported = {};
-                    aiToolsSupported = {};
-                    break;
-            }
+            aiModelCapabilities = await getCurrentModelCapabilities();
         } catch (e) {
             logError(e);
             await replyToMessage({message: msg, text: `Произошла ошибка: ${e}`}).catch(logError);
             return;
         }
+
 
         const aiInfo = "```" +
             "AI\n" +
@@ -79,9 +32,10 @@ export class Info extends ChatCommand {
 
             `provider: ${aiProvider.toLowerCase()}\n` +
             `model: ${aiModel}\n\n` +
-            `vision${aiVisionSupported.external ? "(ext)" : ""}: ${boolToEmoji(aiVisionSupported.supported)}\n` +
-            `thinking${aiThinkingSupported.external ? "(ext)" : ""}: ${boolToEmoji(aiThinkingSupported.supported)}\n` +
-            `tools: ${boolToEmoji(aiToolsSupported.supported)}` +
+            `vision${aiModelCapabilities.vision?.external ? "(ext)" : ""}: ${boolToEmoji(aiModelCapabilities.vision?.supported)}\n` +
+            `ocr${aiModelCapabilities.ocr?.external ? "(ext)" : ""}: ${boolToEmoji(aiModelCapabilities.ocr?.supported)}\n` +
+            `thinking${aiModelCapabilities.thinking?.external ? "(ext)" : ""}: ${boolToEmoji(aiModelCapabilities.thinking?.supported)}\n` +
+            `tools${aiModelCapabilities.tools?.external ? "(ext)" : ""}: ${boolToEmoji(aiModelCapabilities.tools?.supported)}` +
             "```";
 
         const cmds = commands.filter(c => !(c instanceof ChatCommand));

@@ -59,8 +59,7 @@ export class OllamaChat extends ChatCommand {
                 try {
                     const modelInfo = await commands.find(c => c instanceof OllamaGetModel).loadImageModelInfo();
                     if (modelInfo) {
-                        const caps = modelInfo.capabilities || [];
-                        if (!caps.includes("vision")) {
+                        if (!modelInfo.vision?.supported) {
                             await replyToMessage({
                                 message: msg,
                                 text: "Моя текущая модель не умеет анализировать изображения 🥹"
@@ -77,8 +76,7 @@ export class OllamaChat extends ChatCommand {
                 try {
                     const modelInfo = await commands.find(c => c instanceof OllamaGetModel).loadThinkModelInfo();
                     if (modelInfo) {
-                        const caps = modelInfo.capabilities || [];
-                        if (!caps.includes("thinking")) {
+                        if (!modelInfo.thinking?.supported) {
                             await replyToMessage({
                                 message: msg,
                                 text: "Моя текущая модель не умеет размышлять 🥹"

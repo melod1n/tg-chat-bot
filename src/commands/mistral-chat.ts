@@ -6,12 +6,14 @@ import {
     escapeMarkdownV2Text,
     logError,
     oldReplyToMessage,
+    replyToMessage,
     startIntervalEditor
 } from "../util/utils";
 import {Environment} from "../common/environment";
-import {bot, mistralAi} from "../index";
+import {bot, commands, mistralAi} from "../index";
 import {MessageStore} from "../common/message-store";
 import {ChatCommand} from "../base/chat-command";
+import {MistralGetModel} from "./mistral-get-model";
 
 export class MistralChat extends ChatCommand {
     command = "mistral";
@@ -66,6 +68,23 @@ export class MistralChat extends ChatCommand {
             const imagesCount = chatMessages.reduce((total, curr) => {
                 return total + (curr.content.filter(c => c.type === "image_url")?.length ?? 0);
             }, 0);
+
+            if (imagesCount) {
+                try {
+                    const modelInfo = await commands.find(c => c instanceof MistralGetModel).getModelCapabilities();
+                    if (modelInfo) {
+                        if (!modelInfo.vision?.supported) {
+                            await replyToMessage({
+                                message: msg,
+                                text: "Моя текущая модель не умеет анализировать изображения 🥹"
+                            });
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    logError(e);
+                }
+            }
 
             waitMessage = await bot.sendMessage({
                 chat_id: chatId,

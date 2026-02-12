@@ -3,7 +3,7 @@ import {Message} from "typescript-telegram-bot-api";
 import {boolToEmoji, logError, replyToMessage} from "../util/utils";
 import {Environment} from "../common/environment";
 import {ollama} from "../index";
-import {ShowResponse} from "ollama";
+import {AiModelCapabilities} from "../model/ai-model-capabilities";
 
 export class OllamaGetModel extends Command {
     title = "/ollamaGetModel";
@@ -15,7 +15,7 @@ export class OllamaGetModel extends Command {
             const imageModel = Environment.OLLAMA_IMAGE_MODEL;
             const thinkModel = Environment.OLLAMA_THINK_MODEL;
 
-            const promises: (Promise<ShowResponse | null> | null)[] = [this.loadModelInfo()];
+            const promises: (Promise<AiModelCapabilities | null> | null)[] = [this.getModelCapabilities()];
 
             if (imageModel && imageModel !== model) {
                 promises.push(this.loadImageModelInfo());
@@ -62,24 +62,51 @@ export class OllamaGetModel extends Command {
         }
     }
 
-    private getModelText(model: string, info: ShowResponse): string {
-        const caps = info.capabilities;
-
+    private getModelText(model: string, info: AiModelCapabilities): string {
         return `model: ${model}\n\n` +
-            `vision: ${boolToEmoji(caps.includes("vision"))}\n` +
-            `thinking: ${boolToEmoji(caps.includes("thinking"))}\n` +
-            `tools: ${boolToEmoji(caps.includes("tools"))}`;
+            `vision: ${boolToEmoji(info.vision?.supported)}\n` +
+            `thinking: ${boolToEmoji(info.thinking?.supported)}\n` +
+            `tools: ${boolToEmoji(info.tools?.supported)}`;
     }
 
-    async loadModelInfo(): Promise<ShowResponse | null> {
-        return ollama.show({model: Environment.OLLAMA_MODEL});
+    async getModelCapabilities(model: string = Environment.OLLAMA_MODEL): Promise<AiModelCapabilities | null> {
+        try {
+            const info = await ollama.show({model: model});
+            console.log(info);
+
+            return {
+                vision: {
+                    supported: info.capabilities.includes("vision"),
+                    external: model !== Environment.OLLAMA_MODEL,
+                    model: model
+                },
+                ocr: {
+                    supported: info.capabilities.includes("ocr"),
+                    external: model !== Environment.OLLAMA_MODEL,
+                    model: model
+                },
+                thinking: {
+                    supported: info.capabilities.includes("thinking"),
+                    external: model !== Environment.OLLAMA_MODEL,
+                    model: model
+                },
+                tools: {
+                    supported: info.capabilities.includes("tools"),
+                    external: model !== Environment.OLLAMA_MODEL,
+                    model: model
+                },
+            };
+        } catch (e) {
+            logError(e);
+            return null;
+        }
     }
 
-    async loadImageModelInfo(): Promise<ShowResponse | null> {
-        return ollama.show({model: Environment.OLLAMA_IMAGE_MODEL});
+    async loadImageModelInfo(): Promise<AiModelCapabilities | null> {
+        return this.getModelCapabilities(Environment.OLLAMA_IMAGE_MODEL);
     }
 
-    async loadThinkModelInfo(): Promise<ShowResponse | null> {
-        return ollama.show({model: Environment.OLLAMA_THINK_MODEL});
+    async loadThinkModelInfo(): Promise<AiModelCapabilities | null> {
+        return this.getModelCapabilities(Environment.OLLAMA_THINK_MODEL);
     }
 }
