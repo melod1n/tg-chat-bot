@@ -27,7 +27,6 @@ export class OpenAIGenImage extends ChatCommand {
         try {
             const totalParts = 3;
             const model = Environment.OPENAI_IMAGE_MODEL;
-            const size = "1024x1024";
             const fileFullName = `${msg.chat.id}_${msg.message_id}.png`;
             const getFileLocation = (fn: string) => {
                 return path.join(photoGenDir, fn);
@@ -39,9 +38,11 @@ export class OpenAIGenImage extends ChatCommand {
                 model: model,
                 prompt: prompt,
                 n: 1,
-                size: size,
+                size: "auto",
                 stream: true,
                 partial_images: totalParts,
+                moderation: "low",
+                output_format: "png",
             });
 
             const then = Date.now();
@@ -85,7 +86,7 @@ export class OpenAIGenImage extends ChatCommand {
                             media: {
                                 type: "photo",
                                 media: imageBuffer,
-                                caption: `🌈 Изображение по запросу "${prompt}" сгенерировано моделью "${model}" размеров ${size} за ${diff}ms`
+                                caption: `🌈 Изображение по запросу "${prompt}" сгенерировано моделью "${model}" размеров ${event.size} за ${diff}ms`
                             }
                         });
                         break;
