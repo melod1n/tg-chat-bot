@@ -1149,7 +1149,7 @@ export async function processNewMessage(msg: Message): Promise<void> {
         logError(e);
     }
 
-    if ((msg.new_chat_members?.length || 0 > 0)) {
+    if ((msg.new_chat_members?.length)) {
         await bot.sendMessage({chat_id: msg.chat.id, text: randomValue(Environment.ANSWERS.invite)}).catch(logError);
         return;
     }

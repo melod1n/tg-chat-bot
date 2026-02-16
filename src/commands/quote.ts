@@ -12,8 +12,7 @@ import {
     getUserAvatar,
     logError,
     makeDarkGradientBgFancy,
-    oldReplyToMessage,
-    oldSendMessage
+    replyToMessage
 } from "../util/utils";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
@@ -50,15 +49,10 @@ export class Quote extends Command {
         const chatId = msg.chat.id;
         const reply = msg.reply_to_message;
 
-        if (!reply) {
-            await oldReplyToMessage(msg, "Сделай /quote реплаем на сообщение 🙂").catch(logError);
-            return;
-        }
-
         try {
             const quoteRaw = (msg.quote?.text ?? reply.text ?? reply.caption ?? "").trim();
             if (quoteRaw.length === 0) {
-                await oldReplyToMessage(msg, "Не нашёл в сообщении текста 😢").catch(logError);
+                await replyToMessage({message: msg, text: "Не нашёл в сообщении текста 😢"}).catch(logError);
                 return;
             }
 
@@ -76,7 +70,7 @@ export class Quote extends Command {
             }).catch(logError);
         } catch (e) {
             logError(e);
-            await oldSendMessage(msg, "Не смог собрать цитату 😢").catch(logError);
+            await replyToMessage({message: msg, text: "Не смог собрать цитату 😢"}).catch(logError);
         }
     }
 }
