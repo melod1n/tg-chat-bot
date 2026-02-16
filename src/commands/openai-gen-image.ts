@@ -2,7 +2,7 @@ import {ChatCommand} from "../base/chat-command";
 import {Message} from "typescript-telegram-bot-api";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
-import {bot, openAi, photoDir} from "../index";
+import {bot, openAi, photoGenDir} from "../index";
 import fs from "node:fs";
 import path from "node:path";
 import {editMessageText, logError, replyToMessage} from "../util/utils";
@@ -30,11 +30,7 @@ export class OpenAIGenImage extends ChatCommand {
             const size = "1024x1024";
             const fileFullName = `${msg.chat.id}_${msg.message_id}.png`;
             const getFileLocation = (fn: string) => {
-                const genRoot = path.join(photoDir, "gen");
-                if (!fs.existsSync(genRoot)) {
-                    fs.mkdirSync(genRoot);
-                }
-                return path.join(genRoot, fn);
+                return path.join(photoGenDir, fn);
             };
 
             waitMessage = await replyToMessage({message: msg, text: "🌈 Генерирую изображение..."});

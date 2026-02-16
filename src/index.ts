@@ -4,7 +4,6 @@ import {TelegramBot, User} from "typescript-telegram-bot-api";
 import {Command} from "./base/command";
 import {
     delay,
-    ignore,
     initSystemSpecs,
     logError,
     processCallbackQuery,
@@ -218,8 +217,10 @@ if (Environment.OPENAI_API_KEY) {
     );
 }
 
-export const photoDir = path.join(Environment.DATA_PATH, "photo");
-export const videoDir = path.join(Environment.DATA_PATH, "video");
+export const cacheDir = path.join(Environment.DATA_PATH, "cache");
+export const photoDir = path.join(cacheDir, "photo");
+export const photoGenDir = path.join(photoDir, "gen");
+export const videoDir = path.join(cacheDir, "video");
 
 let isShuttingDown = false;
 
@@ -249,8 +250,10 @@ async function main() {
         `DEFAULT_AI_PROVIDER: ${Environment.DEFAULT_AI_PROVIDER}`
     );
 
-    fs.mkdir(photoDir, ignore);
-    fs.mkdir(videoDir, ignore);
+    fs.mkdirSync(cacheDir);
+    fs.mkdirSync(photoDir);
+    fs.mkdirSync(photoGenDir);
+    fs.mkdirSync(videoDir);
 
     const now = new Date();
 
@@ -261,13 +264,11 @@ async function main() {
     const diff = midnight.getTime() - now.getTime();
     console.log("Clearing up videos and photos will be started in " + diff + "ms");
 
-    clearUpFolderFromOldFiles(videoDir);
-    clearUpFolderFromOldFiles(photoDir);
+    clearUpFolderFromOldFiles(cacheDir);
     delay(diff).then(() => {
         setInterval(() => {
-            console.log("Started clearing up videos and photos");
-            clearUpFolderFromOldFiles(videoDir);
-            clearUpFolderFromOldFiles(photoDir);
+            console.log("Started clearing up cache");
+            clearUpFolderFromOldFiles(cacheDir);
         }, 1000 * 60 * 60 * 24);
     });
 
