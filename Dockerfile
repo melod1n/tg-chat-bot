@@ -11,7 +11,7 @@ COPY assets ./assets
 RUN npx tsc -p tsconfig.build.json
 
 # ---- runtime ----
-FROM node:lts-alpine AS runner
+FROM node:lts-trixie-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
