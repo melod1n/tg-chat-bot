@@ -264,7 +264,7 @@ async function main() {
     midnight.setDate(now.getDate() + 1);
 
     const diff = midnight.getTime() - now.getTime();
-    console.log("Clearing up videos and photos will be started in " + diff + "ms");
+    console.log("Clearing up cache will be started in " + diff + "ms");
 
     clearUpFolderFromOldFiles(cacheDir);
     delay(diff).then(() => {
