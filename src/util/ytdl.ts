@@ -1,7 +1,7 @@
 import Innertube, {Platform, Types, Utils} from "youtubei.js";
 import fs, {createWriteStream} from "node:fs";
 import path from "node:path";
-import {Environment} from "../common/environment";
+import {videoDir} from "../index";
 
 export function getYouTubeVideoId(url: string): string {
     const regex = /(?:(?:youtube\.com|music\.youtube\.com)\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts|clip)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
@@ -20,12 +20,7 @@ export async function downloadVideoFromYouTube(url: string, targetQuality: strin
 
     try {
         const videoId = getYouTubeVideoId(url);
-        const videoFolder = path.join(Environment.DATA_PATH, "video");
-        if (!fs.existsSync(videoFolder)) {
-            fs.mkdirSync(videoFolder);
-        }
-
-        const filePath = path.join(videoFolder, `${videoId}.mp4`);
+        const filePath = path.join(videoDir, `${videoId}.mp4`);
         if (fs.existsSync(filePath)) {
             const buffer = Buffer.from(fs.readFileSync(filePath));
             return {

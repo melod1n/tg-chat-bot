@@ -15,7 +15,7 @@ import {
 } from "typescript-telegram-bot-api";
 import {Environment} from "../common/environment";
 import {TelegramError} from "typescript-telegram-bot-api/dist/errors";
-import {bot, botUser, callbackCommands, commands, messageDao, ollama} from "../index";
+import {bot, botUser, callbackCommands, commands, messageDao, ollama, photoDir} from "../index";
 import os from "os";
 import axios from "axios";
 import {MessagePart} from "../common/message-part";
@@ -538,12 +538,7 @@ export async function loadImagesIfExists(msg: Message | StoredMessage): Promise<
 
     const maxSize = await mapPhotoSizeToMax(getPhotoMaxSize(msg.photo));
     if (maxSize) {
-        const imagePath = path.join(Environment.DATA_PATH, "photo");
-        if (!fs.existsSync(imagePath)) {
-            fs.mkdirSync(imagePath);
-        }
-
-        let imageFilePath = path.join(imagePath, maxSize.unique_file_id + ".jpg");
+        let imageFilePath = path.join(photoDir, maxSize.unique_file_id + ".jpg");
         if (!fs.existsSync(imageFilePath)) {
             const res = await axios.get<ArrayBuffer>(maxSize.url, {responseType: "arraybuffer"});
             const src = Buffer.from(res.data);
@@ -567,11 +562,6 @@ export async function loadImagesIfExists(msg: Message | StoredMessage): Promise<
 export async function loadImagesFromFileIds(sizes: PhotoSize[]): Promise<string[] | null> {
     if (!sizes?.length) return null;
 
-    const dataPath = path.join(Environment.DATA_PATH, "photo");
-    if (!fs.existsSync(dataPath)) {
-        fs.mkdirSync(dataPath);
-    }
-
     const existing =
         sizes.filter(s => fs.existsSync(photoPathByUniqueId(s.file_unique_id)))
             .map(s => s.file_unique_id);
@@ -589,7 +579,7 @@ export async function loadImagesFromFileIds(sizes: PhotoSize[]): Promise<string[
     const paths = responses.map((res, index) => {
         try {
             const uniqueFileId = maxSizes[index].unique_file_id;
-            const imageFilePath = path.join(dataPath, uniqueFileId + ".jpg");
+            const imageFilePath = path.join(photoDir, uniqueFileId + ".jpg");
             const src = Buffer.from(res.data);
             fs.writeFileSync(imageFilePath, src);
             return uniqueFileId;
@@ -1063,7 +1053,7 @@ async function processAlbum(groupId: string): Promise<string[]> {
 }
 
 export function photoPathByUniqueId(uniqueId: string): string {
-    return path.join(Environment.DATA_PATH, "photo", uniqueId + ".jpg");
+    return path.join(photoDir, uniqueId + ".jpg");
 }
 
 export function getCurrentModel(): string {
