@@ -11,7 +11,7 @@ COPY assets ./assets
 RUN bunx tsc -p tsconfig.build.json
 
 # ---- runtime ----
-FROM oven/bun:debian AS runner
+FROM oven/bun:alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
