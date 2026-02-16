@@ -132,7 +132,6 @@ export const commands: Command[] = [
     new Start(),
     new Help(),
     new Test(),
-    new Ae(),
     new Ignore(),
     new Unignore(),
     new Ping(),
@@ -167,6 +166,10 @@ export const commands: Command[] = [
 
     new YouTubeDownload()
 ];
+
+if (Environment.ENABLE_UNSAFE_EVAL) {
+    commands.push(new Ae());
+}
 
 export const callbackCommands: CallbackCommand[] = [
     new OllamaCancel()

@@ -19,6 +19,8 @@ export class Environment {
 
     static ONLY_FOR_CREATOR_MODE: boolean;
 
+    static ENABLE_UNSAFE_EVAL: boolean;
+
     static ANSWERS: Answers;
 
     static USE_NAMES_IN_PROMPT: boolean;
@@ -64,6 +66,8 @@ export class Environment {
         Environment.DB_PATH = "file:" + path.join(Environment.DATA_PATH, Environment.DB_FILE_NAME);
 
         Environment.ONLY_FOR_CREATOR_MODE = ifTrue(process.env.ONLY_FOR_CREATOR_MODE);
+
+        Environment.ENABLE_UNSAFE_EVAL = ifTrue(process.env.ENABLE_UNSAFE_EVAL);
 
         Environment.USE_NAMES_IN_PROMPT = ifTrue(process.env.USE_NAMES_IN_PROMPT);
 
