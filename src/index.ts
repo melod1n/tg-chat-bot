@@ -250,10 +250,12 @@ async function main() {
         `DEFAULT_AI_PROVIDER: ${Environment.DEFAULT_AI_PROVIDER}`
     );
 
-    fs.mkdirSync(cacheDir);
-    fs.mkdirSync(photoDir);
-    fs.mkdirSync(photoGenDir);
-    fs.mkdirSync(videoDir);
+    const dirsToCheck = [cacheDir, photoDir, photoGenDir, videoDir];
+    dirsToCheck.forEach(dir => {
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir);
+        }
+    });
 
     const now = new Date();
 
