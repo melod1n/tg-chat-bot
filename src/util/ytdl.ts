@@ -71,7 +71,8 @@ export async function downloadVideoFromYouTube(url: string): Promise<{
         });
 
         const audioWebStream = await videoInfo.download({
-            itag: audioFormat.itag
+            itag: audioFormat.itag,
+            client: "ANDROID"
         });
 
         const videoStream = Readable.fromWeb(videoWebStream as any);
