@@ -12,6 +12,7 @@ RUN npx tsc -p tsconfig.build.json
 
 # ---- runtime ----
 FROM node:lts-alpine AS runner
+RUN apk add --no-cache ffmpeg
 WORKDIR /app
 
 ENV NODE_ENV=production
