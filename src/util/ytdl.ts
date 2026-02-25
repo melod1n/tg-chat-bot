@@ -1,7 +1,11 @@
-import Innertube, {Platform, Types, Utils} from "youtubei.js";
-import fs, {createWriteStream} from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
-import {videoDir} from "../index";
+import {videoDir, videoTempDir} from "../index";
+import ffmpeg from "fluent-ffmpeg";
+import Innertube, {Platform, Types} from "youtubei.js";
+import {Readable} from "node:stream";
+import {logError} from "./utils";
+import {performFFmpeg} from "./ffmpeg";
 
 export function getYouTubeVideoId(url: string): string {
     const regex = /(?:(?:youtube\.com|music\.youtube\.com)\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts|clip)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
@@ -10,7 +14,7 @@ export function getYouTubeVideoId(url: string): string {
     return match[1];
 }
 
-export async function downloadVideoFromYouTube(url: string, targetQuality: string = "720p"): Promise<{
+export async function downloadVideoFromYouTube(url: string): Promise<{
     time: number,
     exists?: boolean,
     buffer: Buffer | null
@@ -43,34 +47,69 @@ export async function downloadVideoFromYouTube(url: string, targetQuality: strin
             retrieve_player: true
         });
 
-        const info = await yt.getInfo(videoId);
+        const videoInfo = await yt.getInfo(videoId, {client: "ANDROID"});
 
         console.log(`Fetching metadata for: ${videoId}...`);
 
-        const format = info.streaming_data?.formats.find(f => f.quality_label === targetQuality)
-            || info.streaming_data?.adaptive_formats.find(f => f.quality_label === targetQuality);
+        const targetQuality = "360p";
 
-        if (!format) {
+        const videoFormat = videoInfo.streaming_data?.formats.find(f => f.quality_label.startsWith(targetQuality))
+            || videoInfo.streaming_data?.adaptive_formats.find(f => f.quality_label.startsWith(targetQuality));
+
+        const audioFormat = videoInfo.chooseFormat({type: "audio", quality: "best", language: "original"});
+
+        console.log("Video format: ", videoFormat);
+        console.log("Audio Format: ", audioFormat);
+
+        if (!videoFormat) {
             console.log(`Quality ${targetQuality} not found. Falling back to best available.`);
         }
 
-        const stream = await yt.download(videoId, {
-            type: "video+audio",
-            quality: "best",
-            format: "mp4"
+        const videoWebStream = await videoInfo.download({
+            itag: videoFormat.itag,
+            client: "ANDROID"
         });
 
-        const file = createWriteStream(filePath);
+        const audioWebStream = await videoInfo.download({
+            itag: audioFormat.itag
+        });
 
-        console.log("Downloading...");
+        const videoStream = Readable.fromWeb(videoWebStream as any);
+        const audioStream = Readable.fromWeb(audioWebStream as any);
 
-        for await (const chunk of Utils.streamToIterable(stream)) {
-            file.write(chunk);
-        }
+        const videoPath = path.join(videoTempDir, `temp_video_${videoId}.mp4`);
+        const audioPath = path.join(videoTempDir, `temp_audio_${videoId}.mp4`);
 
-        file.end();
+        const writeStream = (stream: any, path: string) =>
+            new Promise((resolve, reject) => {
+                const file = fs.createWriteStream(path);
+                stream.pipe(file);
+                file.on("finish", resolve);
+                file.on("error", reject);
+            });
+
+        await Promise.all([
+            writeStream(videoStream, videoPath),
+            writeStream(audioStream, audioPath)
+        ]);
+
+        await performFFmpeg(() =>
+            ffmpeg()
+                .input(videoPath)
+                .input(audioPath)
+                .videoCodec("copy")
+                .audioCodec("copy")
+                .save(filePath)
+                .on("progress", (progress) => {
+                    console.log("progress", progress);
+                })
+        ).catch(logError);
+
+        fs.unlinkSync(videoPath);
+        fs.unlinkSync(audioPath);
 
         buffer = fs.readFileSync(filePath);
+
         console.log(`✅ Saved to ${videoId}.mp4`);
     } catch (error) {
         console.error("❌ Download failed:", error instanceof Error ? error.message : error);

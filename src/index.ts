@@ -93,7 +93,7 @@ export let botUser: User;
 
 export const googleAi = new GoogleGenAI({apiKey: Environment.GEMINI_API_KEY});
 export const mistralAi = new Mistral({apiKey: Environment.MISTRAL_API_KEY});
-export const openAi = new OpenAI({apiKey: Environment.OPENAI_API_KEY, baseURL: Environment.OPENAI_BASE_URL});
+export const openAi = new OpenAI({apiKey: Environment.OPENAI_API_KEY, baseURL: Environment.OPENAI_BASE_URL, dangerouslyAllowBrowser: true});
 
 export const ollama = new Ollama({
     host: Environment.OLLAMA_ADDRESS,
@@ -221,6 +221,7 @@ export const cacheDir = path.join(Environment.DATA_PATH, "cache");
 export const photoDir = path.join(cacheDir, "photo");
 export const photoGenDir = path.join(photoDir, "gen");
 export const videoDir = path.join(cacheDir, "video");
+export const videoTempDir = path.join(videoDir, "temp");
 
 let isShuttingDown = false;
 
@@ -250,7 +251,7 @@ async function main() {
         `DEFAULT_AI_PROVIDER: ${Environment.DEFAULT_AI_PROVIDER}`
     );
 
-    const dirsToCheck = [cacheDir, photoDir, photoGenDir, videoDir];
+    const dirsToCheck = [cacheDir, photoDir, photoGenDir, videoDir, videoTempDir];
     dirsToCheck.forEach(dir => {
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir);
