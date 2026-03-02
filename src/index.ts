@@ -79,6 +79,8 @@ import {OpenAISetModel} from "./commands/openai-set-model";
 import {Info} from "./commands/info";
 import {OpenAIGenImage} from "./commands/openai-gen-image";
 import {clearUpFolderFromOldFiles} from "./util/files";
+import {DownloadYtVideo} from "./callback_commands/download-yt-video";
+import {YtInfo} from "./callback_commands/yt-info";
 
 process.setUncaughtExceptionCaptureCallback(logError);
 
@@ -171,7 +173,9 @@ if (Environment.ENABLE_UNSAFE_EVAL) {
 }
 
 export const callbackCommands: CallbackCommand[] = [
-    new OllamaCancel()
+    new OllamaCancel(),
+    new DownloadYtVideo(),
+    new YtInfo()
 ];
 
 if (Environment.OLLAMA_ADDRESS && Environment.OLLAMA_MODEL && Environment.SYSTEM_PROMPT) {

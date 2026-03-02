@@ -96,7 +96,7 @@ export class OllamaChat extends ChatCommand {
                 message: msg,
                 text: (!think && imagesCount) ?
                     imagesCount > 1 ? Environment.analyzingPicturesText : Environment.analyzingPictureText
-                    : Environment.waitText
+                    : Environment.waitThinkText
             });
 
             const stream = await ollama.chat({

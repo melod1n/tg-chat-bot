@@ -53,7 +53,7 @@ export class GeminiGenerateImage extends Command {
             await replyToMessage({
                 message: waitMessage,
                 text: `Произошла ошибка!\n${e.toString()}`,
-                disableLinkPreview: true
+                link_preview_options: {is_disabled: true}
             }).catch(logError);
         }
     }

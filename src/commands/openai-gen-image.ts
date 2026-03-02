@@ -5,7 +5,7 @@ import {Requirement} from "../base/requirement";
 import {bot, openAi, photoGenDir} from "../index";
 import fs from "node:fs";
 import path from "node:path";
-import {editMessageText, logError, replyToMessage} from "../util/utils";
+import {oldEditMessageText, logError, replyToMessage} from "../util/utils";
 import {Environment} from "../common/environment";
 import {APIError} from "openai";
 
@@ -102,7 +102,7 @@ export class OpenAIGenImage extends ChatCommand {
                 const text = "❌ Мне запрещено такое генерировать 😠";
 
                 if (waitMessage) {
-                    await editMessageText(msg.chat.id, waitMessage.message_id, text).catch(logError);
+                    await oldEditMessageText(msg.chat.id, waitMessage.message_id, text).catch(logError);
                 } else {
                     await replyToMessage({message: msg, text: text}).catch(logError);
                 }

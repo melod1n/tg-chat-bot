@@ -11,6 +11,7 @@ import {
     Message,
     ParseMode,
     PhotoSize,
+    TelegramBot,
     User
 } from "typescript-telegram-bot-api";
 import {Environment} from "../common/environment";
@@ -30,7 +31,7 @@ import {MessageStore} from "../common/message-store";
 import {SystemInfo} from "../commands/system-info";
 import {PrefixResponse} from "../commands/prefix-response";
 import {OllamaChat} from "../commands/ollama-chat";
-import {getYouTubeVideoId} from "./ytdl";
+import {getYouTubeVideoId, getYouTubeVideoInfo, isVideoExists} from "./ytdl";
 import {YouTubeDownload} from "../commands/youtube-download";
 import {ChatCommand} from "../base/chat-command";
 import {WebSearchResponse} from "../model/web-search-response";
@@ -43,6 +44,11 @@ import {OllamaGetModel} from "../commands/ollama-get-model";
 import {GeminiGetModel} from "../commands/gemini-get-model";
 import {MistralGetModel} from "../commands/mistral-get-model";
 import {OpenAIGetModel} from "../commands/openai-get-model";
+import {SendOptions} from "../model/send-options";
+import {EditOptions} from "../model/edit-options";
+import VideoInfo from "youtubei.js/dist/src/parser/youtube/VideoInfo";
+import {DownloadYtVideo} from "../callback_commands/download-yt-video";
+import {TryAgain} from "../callback_commands/try-again";
 
 export const ignore = () => {
 };
@@ -54,7 +60,7 @@ export const ignoreIfNotChanged = (e: Error | TelegramError) => {
 };
 
 export const ignoreIfMarkupFailed = (e: Error | TelegramError) => {
-    if (!(e instanceof TelegramError && e?.response?.description?.startsWith("Bad Request: can't parse entities"))) {
+    if (!isMarkupFailed(e)) {
         throw e;
     }
 };
@@ -65,6 +71,18 @@ export const logError = (e: Error | TelegramError | string) => {
 
 export const errorPlaceholder = async (msg: Message) => {
     await sendErrorPlaceholder(msg).catch(logError);
+};
+
+export const isMarkupFailed = (e: Error | TelegramError) => {
+    return TelegramBot.isTelegramError(e) && e?.response?.description?.startsWith("Bad Request: can't parse entities");
+};
+
+export const isTooManyRequests = (e: Error | TelegramError) => {
+    return TelegramBot.isTelegramError(e) && e.response.description.includes("Too Many Requests");
+};
+
+export const isMessageTooLong = (e: Error | TelegramError) => {
+    return TelegramBot.isTelegramError(e) && e.response.description.includes("MESSAGE_TOO_LONG");
 };
 
 export function searchChatCommand(
@@ -117,7 +135,7 @@ export async function checkRequirements(cmd: Command | CallbackCommand | null, m
 
     const cbId = cb?.id;
     const chatId = msg?.chat?.id || cb?.message?.chat?.id || -1;
-    const messageId = msg?.message_id || cb?.message?.message_id || -1;
+    const messageId = msg?.message_id || (cb && cb.message && "reply_to_message" in cb.message ? cb.message.reply_to_message.message_id : null) || -1;
     const fromId = msg?.from?.id || cb?.from?.id || -1;
     const chatType = msg?.chat?.type || cb?.message?.chat?.type || null;
 
@@ -196,11 +214,8 @@ export async function checkRequirements(cmd: Command | CallbackCommand | null, m
     if (reqs.isRequiresSameUser()) {
         let originalFromId: number | null;
         try {
-            const queryMessage = await MessageStore.get(chatId, messageId);
-            if (queryMessage && queryMessage.replyToMessageId) {
-                const originalMessage = await MessageStore.get(chatId, queryMessage.replyToMessageId);
-                originalFromId = originalMessage?.fromId;
-            }
+            const originalMessage = await MessageStore.get(chatId, messageId);
+            originalFromId = originalMessage?.fromId;
         } catch (e) {
             logError(e);
             originalFromId = null;
@@ -239,92 +254,87 @@ export async function findAndExecuteCallbackCommand(commands: CallbackCommand[],
     return true;
 }
 
-export async function editMessageText(chatId: number, messageId: number, messageText: string, parseMode?: ParseMode, replyMarkup?: InlineKeyboardMarkup): Promise<void> {
-    if (messageText.trim().length === 0) return Promise.resolve();
+export async function oldEditMessageText(chatId: number, messageId: number, messageText: string, parseMode?: ParseMode, replyMarkup?: InlineKeyboardMarkup): Promise<boolean | Message> {
+    return editMessageText({
+        chat_id: chatId,
+        message_id: messageId,
+        text: messageText,
+        parse_mode: parseMode,
+        reply_markup: replyMarkup,
+        link_preview_options: {is_disabled: true}
+    });
+}
+
+export async function editMessageText(options: EditOptions) {
+    if (options.text.trim().length === 0) return Promise.resolve(false);
+
     try {
-        await bot.editMessageText({
-            chat_id: chatId,
-            message_id: messageId,
-            text: messageText,
-            parse_mode: parseMode,
-            link_preview_options: {
-                is_disabled: true
-            },
-            reply_markup: replyMarkup
-        }).catch(ignoreIfMarkupFailed);
-        return Promise.resolve();
+        const message = await bot.editMessageText({
+            chat_id: "message" in options ? options.message.chat.id : options.chat_id,
+            message_id: "message" in options ? options.message.message_id : options.message_id,
+            text: options.text,
+            parse_mode: options.parse_mode,
+            reply_markup: options.reply_markup,
+            link_preview_options: options.link_preview_options,
+        });
+        return Promise.resolve(message);
     } catch (e) {
         logError(e);
 
-        if (e instanceof TelegramError && e.response.description.includes("Too Many Requests")) {
+        if (isMarkupFailed(e)) {
+            return Promise.resolve(true);
+        } else if (isTooManyRequests(e)) {
             const delay = Number(e.message.split("retry after ")[1]) || 30;
             setTimeout(() => {
                 return Promise.resolve();
             }, delay * 1000);
-        } else if (e instanceof TelegramError && e.response.description.includes("MESSAGE_TOO_LONG")) {
-            return Promise.reject(e);
         } else {
-            return Promise.resolve();
+            return Promise.reject(e);
         }
     }
 }
 
-export type SendOptions = {
-    chat_id?: number;
-    message?: Message,
-    message_id?: number;
-    text: string,
-    parse_mode?: ParseMode,
-    disableLinkPreview?: boolean
-};
-
 export async function oldSendMessage(message: Message, text: string, parseMode?: ParseMode): Promise<Message> {
-    const response = await bot.sendMessage({
-        chat_id: message.chat.id,
+    return sendMessage({
+        message: message,
         text: text,
         parse_mode: parseMode
     });
-
-    return Promise.resolve(response);
 }
 
 export async function sendMessage(options: SendOptions): Promise<Message> {
     const response = await bot.sendMessage({
-        chat_id: options.chat_id ?? options.message?.chat?.id,
+        chat_id: "message" in options ? options.message.chat.id : options.chat_id,
         text: options.text,
         parse_mode: options.parse_mode,
-        link_preview_options: {
-            is_disabled: options.disableLinkPreview
-        }
-    });
-
-    return Promise.resolve(response);
-}
-
-export async function replyToMessage(options: SendOptions): Promise<Message> {
-    const response = await bot.sendMessage({
-        chat_id: options.chat_id ?? options.message?.chat?.id,
-        text: options.text,
-        parse_mode: options.parse_mode,
-        reply_parameters: {
-            message_id: options.message_id || options.message?.message_id
-        },
-        link_preview_options: {
-            is_disabled: options.disableLinkPreview
-        }
+        link_preview_options: options.link_preview_options,
+        reply_markup: options.reply_markup,
     });
 
     return Promise.resolve(response);
 }
 
 export async function oldReplyToMessage(message: Message, text: string, parseMode?: ParseMode): Promise<Message> {
-    const response = await bot.sendMessage({
-        chat_id: message.chat.id,
+    return replyToMessage({
+        message: message,
         text: text,
+        parse_mode: parseMode
+    });
+}
+
+export async function replyToMessage(options: SendOptions): Promise<Message> {
+    if (!("message" in options) && !options.message_id) {
+        return Promise.reject("for reply there must be message or message_id");
+    }
+
+    const response = await bot.sendMessage({
+        chat_id: "message" in options ? options.message.chat.id : options.chat_id,
+        text: options.text,
+        parse_mode: options.parse_mode,
         reply_parameters: {
-            message_id: message.message_id
+            message_id: "message" in options ? options.message.message_id : options.message_id
         },
-        parse_mode: parseMode,
+        link_preview_options: options.link_preview_options
     });
 
     return Promise.resolve(response);
@@ -1200,27 +1210,8 @@ export async function processNewMessage(msg: Message): Promise<void> {
     }
 
     const textToCheck = startsWithPrefix ? messageWithoutPrefix : cmdText;
-    if (msg.entities) {
-        const urlEntities = msg.entities.filter(e => e.type === "url");
-        if (urlEntities.length) {
-            for (const e of urlEntities) {
-                const url = msg.text.substring(e.offset, e.offset + e.length);
-                // TODO: 31/01/2026, Danil Nikolaev: implement proper checking
-                try {
-                    getYouTubeVideoId(url);
 
-                    const yt = commands.find(e => e instanceof YouTubeDownload);
-                    if (await checkRequirements(yt, msg)) {
-                        await yt.downloadYouTubeVideo(msg, url);
-                    }
-                    return;
-                } catch (e) {
-                    logError(e);
-                }
-            }
-        }
-    }
-
+    if (Environment.PROCESS_LINKS && await processYouTubeLink(msg, getFirstLink(msg))) return;
     if (!startsWithPrefix && msg.chat.type !== "private") return;
     if (msg.chat.type === "private" && !Environment.ADMIN_IDS.has(msg.chat.id)) return;
 
@@ -1242,6 +1233,104 @@ export async function processNewMessage(msg: Message): Promise<void> {
             break;
         }
     }
+}
+
+function getFirstLink(msg: Message): string | null {
+    if (msg.entities) {
+        const urlEntities = msg.entities.filter(e => e.type === "url");
+        if (urlEntities.length) {
+            const e = urlEntities[0];
+            return msg.text.substring(e.offset, e.offset + e.length);
+        }
+    }
+
+    return null;
+}
+
+export async function processYouTubeLink(msg: Message, url: string): Promise<boolean> {
+    if (!url) return false;
+    try {
+        const videoId = getYouTubeVideoId(url);
+        const yt = commands.find(e => e instanceof YouTubeDownload);
+
+        if (await checkRequirements(yt, msg)) {
+            const waitMessage = msg.from.id === botUser.id ? msg : await replyToMessage({
+                message: msg,
+                text: "⏳ Ищу информацию о видео..."
+            });
+
+            if (msg.from.id === botUser.id) {
+                await editMessageText({message: msg, text: "⏳ Ищу информацию о видео..."});
+            }
+
+            let videoInfo: VideoInfo | null = null;
+            let ytError: string = null;
+
+            try {
+                videoInfo = await getYouTubeVideoInfo(videoId);
+            } catch (e) {
+                logError(e);
+
+                if ("version" in e) {
+                    ytError = e.message;
+                }
+            }
+
+            console.log("VIDEO_INFO", videoInfo);
+
+            let text: string = null;
+
+            const inCache = isVideoExists({videoId: videoId});
+
+            const duration = videoInfo?.basic_info?.duration || null;
+            const canDownload = inCache || duration && duration <= 300;
+
+            if (videoInfo) {
+                text = "Видео с YouTube\n\n" +
+                    `Название: ${videoInfo.basic_info?.title}\n` +
+                    `Автор: ${videoInfo.secondary_info?.owner?.author?.name}\n` +
+                    `Длительность: ${duration} сек.`;
+
+                if (!canDownload) {
+                    text += `\n\nВидео слишком длинное (${duration} сек. > 300 сек.)`;
+                }
+            } else if (!ytError) {
+                text = "Информация о видео не найдена";
+            }
+
+            const errorButInCache = !videoInfo && ytError && inCache;
+            if (errorButInCache) {
+                text = "Я не смогу получить информацию о видео, но нашёл его в кэше.";
+            }
+
+            if (!text && ytError) {
+                await editMessageText({
+                    message: waitMessage,
+                    text: Environment.errorText,
+                    reply_markup: {
+                        inline_keyboard: [[
+                            TryAgain.withData("/ytinfo " + url).asButton()
+                        ]]
+                    }
+                });
+            } else {
+                await editMessageText({
+                    message: waitMessage,
+                    text: text,
+                    reply_markup: canDownload ? {
+                        inline_keyboard: [[
+                            DownloadYtVideo.withData(inCache, "/ytdl " + videoId).asButton()
+                        ]]
+                    } : {inline_keyboard: []}
+                });
+            }
+        }
+        return true;
+    } catch (e) {
+        logError(e);
+    }
+
+    return false;
 }
 
 export async function processEditedMessage(msg: Message): Promise<void> {

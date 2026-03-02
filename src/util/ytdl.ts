@@ -6,6 +6,21 @@ import Innertube, {Platform, Types} from "youtubei.js";
 import {Readable} from "node:stream";
 import {logError} from "./utils";
 import {performFFmpeg} from "./ffmpeg";
+import VideoInfo from "youtubei.js/dist/src/parser/youtube/VideoInfo";
+
+let innertube: Innertube | null = null;
+
+export async function getYT(): Promise<Innertube> {
+    if (innertube) {
+        return innertube;
+    } else {
+        innertube = await Innertube.create({
+            generate_session_locally: true,
+            retrieve_player: true
+        });
+        return innertube;
+    }
+}
 
 export function getYouTubeVideoId(url: string): string {
     const regex = /(?:(?:youtube\.com|music\.youtube\.com)\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts|clip)\/|.*[?&]v=)|youtu\.be\/)([^"&?/\s]{11})/i;
@@ -14,7 +29,34 @@ export function getYouTubeVideoId(url: string): string {
     return match[1];
 }
 
-export async function downloadVideoFromYouTube(url: string): Promise<{
+export async function getYouTubeVideoInfo(videoId: string): Promise<VideoInfo> {
+    try {
+        return (await getYT()).getInfo(videoId, {client: "ANDROID"});
+    } catch (e) {
+        logError(e);
+    }
+}
+
+export function isVideoExists(options: DownloadOptions): boolean {
+    const videoId = "videoId" in options ? options.videoId : getYouTubeVideoId(options.url);
+    const filePath = path.join(videoDir, `${videoId}.mp4`);
+    return fs.existsSync(filePath);
+}
+
+export function getVideoFromCache(videoId: string): Buffer | null {
+    if (!isVideoExists({videoId: videoId})) return null;
+
+    const filePath = path.join(videoDir, `${videoId}.mp4`);
+    return Buffer.from(fs.readFileSync(filePath));
+}
+
+export type DownloadOptions = {
+    url: string
+} | {
+    videoId: string;
+}
+
+export async function downloadVideoFromYouTube(options: DownloadOptions): Promise<{
     time: number,
     exists?: boolean,
     buffer: Buffer | null
@@ -23,7 +65,7 @@ export async function downloadVideoFromYouTube(url: string): Promise<{
     let buffer: Buffer | null = null;
 
     try {
-        const videoId = getYouTubeVideoId(url);
+        const videoId = "videoId" in options ? options.videoId : getYouTubeVideoId(options.url);
         const filePath = path.join(videoDir, `${videoId}.mp4`);
         if (fs.existsSync(filePath)) {
             const buffer = Buffer.from(fs.readFileSync(filePath));
@@ -42,12 +84,11 @@ export async function downloadVideoFromYouTube(url: string): Promise<{
             const code = `${data.output}\nreturn { ${properties.join(", ")} }`;
             return new Function(code)();
         };
-        const yt = await Innertube.create({
-            generate_session_locally: true,
-            retrieve_player: true
-        });
+
+        const yt = await getYT();
 
         const videoInfo = await yt.getInfo(videoId, {client: "ANDROID"});
+        console.log("Video info", videoInfo);
 
         console.log(`Fetching metadata for: ${videoId}...`);
 
@@ -119,7 +160,7 @@ export async function downloadVideoFromYouTube(url: string): Promise<{
 
     const end = Date.now();
     const diff = end - start;
-    console.log(`Video downloaded. URL: ${url}\ntook ${diff}ms`);
+    console.log(`Video downloaded.\ntook ${diff}ms`);
 
     return {
         time: diff,

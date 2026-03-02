@@ -1,8 +1,10 @@
 import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
-import {logError, replyToMessage} from "../util/utils";
-import {bot} from "../index";
-import {downloadVideoFromYouTube} from "../util/ytdl";
+import {editMessageText, logError, replyToMessage} from "../util/utils";
+import {bot, botUser} from "../index";
+import {DownloadOptions, downloadVideoFromYouTube, getYouTubeVideoId} from "../util/ytdl";
+import {Environment} from "../common/environment";
+import {TryAgain} from "../callback_commands/try-again";
 
 export class YouTubeDownload extends Command {
     command = ["ytdl", "youtube"];
@@ -10,16 +12,22 @@ export class YouTubeDownload extends Command {
 
     async execute(msg: Message, match?: RegExpExecArray): Promise<void> {
         const url = match?.[3];
-        return this.downloadYouTubeVideo(msg, url);
+        return this.downloadYouTubeVideo(msg, {url: url});
     }
 
-    async downloadYouTubeVideo(msg: Message, url: string): Promise<void> {
-        let waitMessage: Message | null = null;
+    async downloadYouTubeVideo(msg: Message, options: DownloadOptions): Promise<void> {
+        // TODO: 02.03.2026, Danil Nikolaev: add check for date
+        let waitMessage: Message | null = (msg.from.id === botUser.id) ? msg : null;
+        const videoId = "videoId" in options ? options.videoId : getYouTubeVideoId(options.url);
 
         try {
-            waitMessage = await replyToMessage({message: msg, text: "⏳ Секунду..."});
+            if (!waitMessage) {
+                waitMessage = await replyToMessage({message: msg, text: Environment.waitText});
+            } else {
+                await editMessageText({message: msg, text: Environment.waitText});
+            }
 
-            const {time, exists, buffer} = await downloadVideoFromYouTube(url);
+            const {time, exists, buffer} = await downloadVideoFromYouTube({videoId: videoId});
             if (buffer) {
                 const start = Date.now();
                 waitMessage = await bot.editMessageMedia({
@@ -35,7 +43,7 @@ export class YouTubeDownload extends Command {
                 waitMessage = await bot.editMessageCaption({
                     chat_id: msg.chat.id,
                     message_id: waitMessage.message_id,
-                    caption: `✅ [Видео](${url})` + (exists ? " загружено из кэша" : " успешно скачано") + " за " + (time + diff) + "мс",
+                    caption: "✅ [Видео]" + (exists ? " загружено из кэша" : " успешно скачано") + " за " + (time + diff) + "мс",
                     parse_mode: "MarkdownV2"
                 }) as Message;
             }
@@ -46,7 +54,12 @@ export class YouTubeDownload extends Command {
                 await bot.editMessageText({
                     chat_id: msg.chat.id,
                     message_id: waitMessage.message_id,
-                    text: `⚠️ Произошла ошибка.\n${e}`,
+                    text: Environment.errorText,
+                    reply_markup: {
+                        inline_keyboard: [[
+                            TryAgain.withData("/ytdl " + videoId).asButton()
+                        ]]
+                    }
                 });
             }
         }

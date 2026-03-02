@@ -90,7 +90,7 @@ export class MistralChat extends ChatCommand {
                 chat_id: chatId,
                 text: imagesCount ?
                     imagesCount > 1 ? Environment.analyzingPicturesText : Environment.analyzingPictureText
-                    : Environment.waitText,
+                    : Environment.waitThinkText,
 
                 reply_parameters: {
                     chat_id: chatId,

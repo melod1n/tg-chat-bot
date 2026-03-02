@@ -27,6 +27,8 @@ export class Environment {
 
     static MAX_PHOTO_SIZE: number;
 
+    static PROCESS_LINKS: boolean;
+
     static DEFAULT_AI_PROVIDER: AiProvider;
 
     static SYSTEM_PROMPT?: string;
@@ -49,7 +51,9 @@ export class Environment {
     static OPENAI_MODEL: string;
     static OPENAI_IMAGE_MODEL: string;
 
-    static waitText = "⏳ Дайте-ка подумать...";
+    static errorText = "⚠️ Произошла ошибка.";
+    static waitText = "⏳ Секунду...";
+    static waitThinkText = "⏳ Дайте-ка подумать...";
     static analyzingPictureText = "🔍 Внимательно изучаю изображение...";
     static analyzingPicturesText = "🔍 Внимательно изучаю изображения...";
     static genImageText = "👨‍🎨 Генерирую изображение...";
@@ -72,6 +76,8 @@ export class Environment {
         Environment.USE_NAMES_IN_PROMPT = ifTrue(process.env.USE_NAMES_IN_PROMPT);
 
         Environment.MAX_PHOTO_SIZE = Number(process.env.MAX_PHOTO_SIZE || "1280");
+
+        Environment.PROCESS_LINKS = ifTrue(process.env.PROCESS_LINKS);
 
         const aiProvider = process.env.DEFAULT_AI_PROVIDER || "OLLAMA";
         if (Object.values(AiProvider).includes(aiProvider as AiProvider)) {

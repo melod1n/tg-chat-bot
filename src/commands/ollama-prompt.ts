@@ -37,7 +37,7 @@ export class OllamaPrompt extends Command {
 
             waitMessage = await bot.sendMessage({
                 chat_id: chatId,
-                text: Environment.waitText,
+                text: Environment.waitThinkText,
                 reply_parameters: {
                     chat_id: chatId,
                     message_id: msg.message_id

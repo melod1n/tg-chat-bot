@@ -4,7 +4,7 @@ import {Requirement} from "../base/requirement";
 import {Message} from "typescript-telegram-bot-api";
 import {bot, ollama} from "../index";
 import {WebSearchResponse} from "../model/web-search-response";
-import {editMessageText, logError} from "../util/utils";
+import {oldEditMessageText, logError} from "../util/utils";
 import {Environment} from "../common/environment";
 
 export class OllamaSearch extends Command {
@@ -23,7 +23,7 @@ export class OllamaSearch extends Command {
         try {
             const wait = await bot.sendMessage({
                 chat_id: chatId,
-                text: Environment.waitText,
+                text: Environment.waitThinkText,
                 reply_parameters: {
                     chat_id: chatId,
                     message_id: msg.message_id
@@ -40,7 +40,7 @@ export class OllamaSearch extends Command {
                 message += `${index + 1}. ${r.url}\n`;
             });
 
-            await editMessageText(chatId, wait.message_id, message);
+            await oldEditMessageText(chatId, wait.message_id, message);
         } catch (error) {
             logError(error);
         }
