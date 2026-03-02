@@ -1249,18 +1249,29 @@ function getFirstLink(msg: Message): string | null {
 
 export async function processYouTubeLink(msg: Message, url?: string, id?: string): Promise<boolean> {
     if (!url && !id) return false;
+
+    let waitMessage: Message | null = msg.from.id === botUser.id ? msg : null;
+    let videoId: string | null = null;
+
     try {
-        const videoId = id || getYouTubeVideoId(url);
+        try {
+            videoId = id || getYouTubeVideoId(url);
+        } catch (e) {
+            logError(e);
+            return false;
+        }
+
         const yt = commands.find(e => e instanceof YouTubeDownload);
 
         if (await checkRequirements(yt, msg)) {
-            const waitMessage = msg.from.id === botUser.id ? msg : await replyToMessage({
-                message: msg,
-                text: "⏳ Ищу информацию о видео..."
-            });
-
-            if (msg.from.id === botUser.id) {
+            if (!waitMessage) {
+                waitMessage = await replyToMessage({
+                    message: msg,
+                    text: "⏳ Ищу информацию о видео..."
+                });
+            } else {
                 await editMessageText({message: msg, text: "⏳ Ищу информацию о видео..."});
+
             }
 
             let videoInfo: VideoInfo | null = null;
@@ -1328,6 +1339,16 @@ export async function processYouTubeLink(msg: Message, url?: string, id?: string
         return true;
     } catch (e) {
         logError(e);
+
+        await editMessageText({
+            message: waitMessage,
+            text: Environment.errorText,
+            reply_markup: {
+                inline_keyboard: [[
+                    TryAgain.withData("/ytinfo " + videoId).asButton()
+                ]]
+            }
+        });
     }
 
     return false;
