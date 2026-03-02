@@ -37,7 +37,7 @@
     "@types/fluent-ffmpeg": "^2.1.28",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
-    "drizzle-kit": "^1.0.0-beta.9-e89174b",
+    "drizzle-kit": "^1.0.0-beta.15-9485290",
     "eslint": "^9.39.3",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
