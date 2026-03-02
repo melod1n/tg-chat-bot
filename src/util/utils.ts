@@ -1300,7 +1300,7 @@ export async function processYouTubeLink(msg: Message, url: string): Promise<boo
 
             const errorButInCache = !videoInfo && ytError && inCache;
             if (errorButInCache) {
-                text = "Я не смогу получить информацию о видео, но нашёл его в кэше.";
+                text = "Я не смог получить информацию о видео, но нашёл его в кэше.";
             }
 
             if (!text && ytError) {
