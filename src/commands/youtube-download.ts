@@ -22,9 +22,9 @@ export class YouTubeDownload extends Command {
 
         try {
             if (!waitMessage) {
-                waitMessage = await replyToMessage({message: msg, text: Environment.waitText});
+                waitMessage = await replyToMessage({message: msg, text: "⏳ Скачиваю видео..."});
             } else {
-                await editMessageText({message: msg, text: Environment.waitText});
+                await editMessageText({message: msg, text: "⏳ Скачиваю видео..."});
             }
 
             const {time, exists, buffer} = await downloadVideoFromYouTube({videoId: videoId});
@@ -43,8 +43,7 @@ export class YouTubeDownload extends Command {
                 waitMessage = await bot.editMessageCaption({
                     chat_id: msg.chat.id,
                     message_id: waitMessage.message_id,
-                    caption: "✅ [Видео]" + (exists ? " загружено из кэша" : " успешно скачано") + " за " + (time + diff) + "мс",
-                    parse_mode: "MarkdownV2"
+                    caption: "✅ Видео" + (exists ? " загружено из кэша" : " успешно скачано") + " за " + (time + diff) + "мс",
                 }) as Message;
             }
         } catch (e) {
