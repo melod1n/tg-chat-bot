@@ -7,9 +7,9 @@ export class YtInfo extends CallbackCommand {
     text: string;
 
     async execute(query: CallbackQuery): Promise<void> {
-        const videoUrl = query.data.split(" ")[1];
-        if (!videoUrl) return;
+        const videoId = query.data.split(" ")[1];
+        if (!videoId) return;
 
-        await processYouTubeLink(query.message, videoUrl);
+        await processYouTubeLink(query.message, null, videoId);
     }
 }

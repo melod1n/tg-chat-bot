@@ -1247,10 +1247,10 @@ function getFirstLink(msg: Message): string | null {
     return null;
 }
 
-export async function processYouTubeLink(msg: Message, url: string): Promise<boolean> {
-    if (!url) return false;
+export async function processYouTubeLink(msg: Message, url?: string, id?: string): Promise<boolean> {
+    if (!url && !id) return false;
     try {
-        const videoId = getYouTubeVideoId(url);
+        const videoId = id || getYouTubeVideoId(url);
         const yt = commands.find(e => e instanceof YouTubeDownload);
 
         if (await checkRequirements(yt, msg)) {
@@ -1309,7 +1309,7 @@ export async function processYouTubeLink(msg: Message, url: string): Promise<boo
                     text: Environment.errorText,
                     reply_markup: {
                         inline_keyboard: [[
-                            TryAgain.withData("/ytinfo " + url).asButton()
+                            TryAgain.withData("/ytinfo " + videoId).asButton()
                         ]]
                     }
                 });
