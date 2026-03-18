@@ -25,6 +25,8 @@ export class Qr extends Command {
             return;
         }
 
+        // TODO: 16/02/2026, Danil Nikolaev: escape html symbols in payload
+
         if (payload.length > 1500) {
             payload = payload.slice(0, 1500);
 
