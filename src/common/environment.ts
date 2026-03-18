@@ -3,6 +3,7 @@ import {saveData} from "../db/database";
 import {Answers} from "../model/answers";
 import {ifTrue} from "../util/utils";
 import {AiProvider} from "../model/ai-provider";
+import {ImageHandleFallbackPolicy, ImageHandlePolicy, RateLimitFallbackPolicy} from "./policies";
 
 export class Environment {
     static BOT_TOKEN: string;
@@ -30,6 +31,10 @@ export class Environment {
     static PROCESS_LINKS: boolean;
 
     static DEFAULT_AI_PROVIDER: AiProvider;
+
+    static RATE_LIMIT_FALLBACK_POLICY: RateLimitFallbackPolicy;
+    static IMAGE_HANDLE_POLICY: ImageHandlePolicy;
+    static IMAGE_HANDLE_FALLBACK_POLICY: ImageHandleFallbackPolicy;
 
     static SYSTEM_PROMPT?: string;
 
@@ -84,6 +89,27 @@ export class Environment {
             Environment.DEFAULT_AI_PROVIDER = aiProvider as AiProvider;
         } else {
             Environment.DEFAULT_AI_PROVIDER = AiProvider.OLLAMA;
+        }
+
+        const rateLimitFallbackPolicy = process.env.RATE_LIMIT_FALLBACK_POLICY || "NOTIFY_USER";
+        if (Object.values(RateLimitFallbackPolicy).includes(rateLimitFallbackPolicy as RateLimitFallbackPolicy)) {
+            Environment.RATE_LIMIT_FALLBACK_POLICY = rateLimitFallbackPolicy as RateLimitFallbackPolicy;
+        } else {
+            Environment.RATE_LIMIT_FALLBACK_POLICY = RateLimitFallbackPolicy.NOTIFY_USER;
+        }
+
+        const imageHandlePolicy = process.env.IMAGE_HANDLE_POLICY || "HANDLE_IF_CAPABLE";
+        if (Object.values(ImageHandlePolicy).includes(imageHandlePolicy as ImageHandlePolicy)) {
+            Environment.IMAGE_HANDLE_POLICY = imageHandlePolicy as ImageHandlePolicy;
+        } else {
+            Environment.IMAGE_HANDLE_POLICY = ImageHandlePolicy.HANDLE_IF_CAPABLE;
+        }
+
+        const imageHandleFallbackPolicy = process.env.IMAGE_HANDLE_FALLBACK_POLICY || "NOTIFY_USER";
+        if (Object.values(ImageHandleFallbackPolicy).includes(imageHandleFallbackPolicy as ImageHandleFallbackPolicy)) {
+            Environment.IMAGE_HANDLE_FALLBACK_POLICY = imageHandleFallbackPolicy as ImageHandleFallbackPolicy;
+        } else {
+            Environment.IMAGE_HANDLE_FALLBACK_POLICY = ImageHandleFallbackPolicy.NOTIFY_USER;
         }
 
         Environment.SYSTEM_PROMPT = process.env.SYSTEM_PROMPT?.trim();
