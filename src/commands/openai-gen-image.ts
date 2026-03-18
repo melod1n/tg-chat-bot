@@ -10,7 +10,7 @@ import {Environment} from "../common/environment";
 import {APIError} from "openai";
 
 export class OpenAIGenImage extends ChatCommand {
-    command = ["openAiGenImage", "chatGPTGenImage"];
+    command = ["openAiGenImage", "chatGPTGenImage", "imgen"];
 
     title = "/openAIGenImage";
     description = "Generate image from OpenAI";
