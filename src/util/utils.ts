@@ -49,6 +49,7 @@ import {EditOptions} from "../model/edit-options";
 import VideoInfo from "youtubei.js/dist/src/parser/youtube/VideoInfo";
 import {DownloadYtVideo} from "../callback_commands/download-yt-video";
 import {TryAgain} from "../callback_commands/try-again";
+import {StoredUser} from "../model/stored-user";
 
 export const ignore = () => {
 };
@@ -389,11 +390,13 @@ export function chatCommandToString(cmd: Command): string {
     return `${cmd.title ? `${cmd.title}: ` : ""}${cmd.description ? `${cmd.description}` : ""}`;
 }
 
-export function fullName(from: User): string {
-    let fullName = from.first_name;
+export function fullName(from: User | StoredUser): string {
+    const isStored = "isBot" in from;
 
-    if (from.last_name) {
-        fullName += " " + from.last_name;
+    let fullName = isStored ? from.firstName : from.first_name;
+
+    if (isStored ? from.lastName : from.last_name) {
+        fullName += " " + (isStored ? from.lastName : from.last_name);
     }
 
     return fullName;
