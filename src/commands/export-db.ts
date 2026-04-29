@@ -30,7 +30,10 @@ export class ExportDb extends Command {
                 document: new FileOptions(buffer, {filename: "database.db", contentType: "application/sql"}),
                 caption: "Бэкап базы данных",
             });
-            await replyToMessage({message: msg, text: "Успешно отправлено в ЛС создателю!"});
+
+            if (msg.chat.id !== Environment.CREATOR_ID) {
+                await replyToMessage({message: msg, text: "Успешно отправлено в ЛС создателю!"});
+            }
         } catch (e) {
             logError(e);
             await sendErrorPlaceholder(msg);
