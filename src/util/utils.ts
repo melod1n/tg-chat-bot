@@ -1425,7 +1425,7 @@ export async function processNewMessage(msg: Message): Promise<void> {
 
     if (Environment.PROCESS_LINKS && await processYouTubeLink(msg, getFirstLink(msg))) return;
 
-    if (msg.chat.type !== "private" && (!msg.reply_to_message || msg.reply_to_message.from.id !== botUser.id)) return;
+    if (msg.chat.type !== "private" && (!msg.reply_to_message || msg.reply_to_message.from.id !== botUser.id) && !startsWithPrefix) return;
 
     if (msg.chat.type === "private" && !Environment.ADMIN_IDS.has(msg.chat.id)) return;
 
