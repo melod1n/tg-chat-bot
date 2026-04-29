@@ -82,6 +82,7 @@ import {clearUpFolderFromOldFiles} from "./util/files";
 import {DownloadYtVideo} from "./callback_commands/download-yt-video";
 import {YtInfo} from "./callback_commands/yt-info";
 import {AdminsList} from "./commands/admins-list";
+import {ExportDb} from "./commands/export-db";
 
 process.setUncaughtExceptionCaptureCallback(logError);
 
@@ -163,6 +164,8 @@ export const commands: Command[] = [
     new AdminsAdd(),
     new AdminsRemove(),
     new AdminsList(),
+
+    new ExportDb(),
 
     new Shutdown(),
     new Leave(),
