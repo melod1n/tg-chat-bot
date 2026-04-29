@@ -112,8 +112,6 @@ export class Environment {
             Environment.IMAGE_HANDLE_FALLBACK_POLICY = ImageHandleFallbackPolicy.NOTIFY_USER;
         }
 
-        Environment.SYSTEM_PROMPT = process.env.SYSTEM_PROMPT?.trim();
-
         Environment.OLLAMA_ADDRESS = process.env.OLLAMA_ADDRESS;
         Environment.OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gemma3:4b";
         Environment.OLLAMA_IMAGE_MODEL = process.env.OLLAMA_IMAGE_MODEL || Environment.OLLAMA_MODEL;
@@ -131,6 +129,10 @@ export class Environment {
         Environment.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
         Environment.OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-nano";
         Environment.OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1-mini";
+    }
+
+    static setSystemPrompt(prompt: string) {
+        this.SYSTEM_PROMPT = prompt;
     }
 
     static setAdmins(admins: Set<number>) {

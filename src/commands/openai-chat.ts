@@ -58,11 +58,14 @@ export class OpenAIChat extends ChatCommand {
             };
         });
         chatMessages.reverse();
-        chatMessages.unshift({
-            role: "system",
-            content: [{type: "input_text", text: Environment.SYSTEM_PROMPT}],
-            type: "message"
-        });
+
+        if (Environment.SYSTEM_PROMPT) {
+            chatMessages.unshift({
+                role: "system",
+                content: [{type: "input_text", text: Environment.SYSTEM_PROMPT}],
+                type: "message"
+            });
+        }
 
         let waitMessage: Message;
 

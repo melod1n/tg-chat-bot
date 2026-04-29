@@ -452,12 +452,221 @@ export const delay = (ms: number, signal?: AbortSignal): Promise<void> =>
         }
     });
 
-export function escapeMarkdownV2Text(s: string) {
-    s = s.replace(/^\*{3,}\s*$/gm, "— — —");
-    s = s.replace(/^\*\s+(?=\S)/gm, "• ");
-    s = s.replace(/\*\*(.+?)\*\*/g, "*$1*");
+const MARKDOWN_V2_RESERVED_RE = /([\\_*\[\]()~`>#+\-=|{}.!])/g;
 
-    return s;
+function escapePlainMarkdownV2(s: string): string {
+    return s.replace(MARKDOWN_V2_RESERVED_RE, "\\$1");
+}
+
+function escapeCodeMarkdownV2(s: string): string {
+    return s.replace(/[\\`]/g, "\\$&");
+}
+
+function escapeLinkUrlMarkdownV2(s: string): string {
+    return s.replace(/[\\)]/g, "\\$&");
+}
+
+function escapeMarkdownV2PreservingAllowedFormatting(s: string): string {
+    let result = "";
+    let i = 0;
+
+    while (i < s.length) {
+        // links: [text](url)
+        if (s[i] === "[") {
+            const linkMatch = s.slice(i).match(/^\[([^\]\n]+)]\(([^)\n]+)\)/);
+
+            if (linkMatch) {
+                const [, text, url] = linkMatch;
+                result += `[${escapePlainMarkdownV2(text)}](${escapeLinkUrlMarkdownV2(url)})`;
+                i += linkMatch[0].length;
+                continue;
+            }
+        }
+
+        // monospace: `text`
+        if (s[i] === "`") {
+            const end = s.indexOf("`", i + 1);
+
+            if (end !== -1) {
+                const content = s.slice(i + 1, end);
+                result += "`" + escapeCodeMarkdownV2(content) + "`";
+                i = end + 1;
+                continue;
+            }
+        }
+
+        // spoiler: ||text||
+        if (s.startsWith("||", i)) {
+            const end = s.indexOf("||", i + 2);
+
+            if (end !== -1) {
+                const content = s.slice(i + 2, end);
+                result += "||" + escapeMarkdownV2PreservingAllowedFormatting(content) + "||";
+                i = end + 2;
+                continue;
+            }
+        }
+
+        // underline: __text__
+        if (s.startsWith("__", i)) {
+            const end = s.indexOf("__", i + 2);
+
+            if (end !== -1) {
+                const content = s.slice(i + 2, end);
+                result += "__" + escapeMarkdownV2PreservingAllowedFormatting(content) + "__";
+                i = end + 2;
+                continue;
+            }
+        }
+
+        // bold: *text*
+        if (s[i] === "*") {
+            const end = s.indexOf("*", i + 1);
+
+            if (end !== -1) {
+                const content = s.slice(i + 1, end);
+                result += "*" + escapeMarkdownV2PreservingAllowedFormatting(content) + "*";
+                i = end + 1;
+                continue;
+            }
+        }
+
+        // italic: _text_
+        if (s[i] === "_") {
+            const end = s.indexOf("_", i + 1);
+
+            if (end !== -1) {
+                const content = s.slice(i + 1, end);
+                result += "_" + escapeMarkdownV2PreservingAllowedFormatting(content) + "_";
+                i = end + 1;
+                continue;
+            }
+        }
+
+        // strikethrough: ~text~
+        if (s[i] === "~") {
+            const end = s.indexOf("~", i + 1);
+
+            if (end !== -1) {
+                const content = s.slice(i + 1, end);
+                result += "~" + escapeMarkdownV2PreservingAllowedFormatting(content) + "~";
+                i = end + 1;
+                continue;
+            }
+        }
+
+        result += escapePlainMarkdownV2(s[i]);
+        i++;
+    }
+
+    return result;
+}
+
+function unescapeAccidentalMarkdownV2(s: string): string {
+    return s.replace(/\\([_*\[\]()~`>#+\-=|{}.!\\])/g, "$1");
+}
+
+function escapeTelegramQuoteLine(line: string): string {
+    const content = line.replace(/^>\s*/, "");
+
+    if (!content.trim()) {
+        return ">";
+    }
+
+    return ">" + escapeMarkdownV2PreservingAllowedFormatting(content);
+}
+
+function normalizeTelegramQuoteLines(s: string): string {
+    return s
+        .split("\n")
+        .map(line => {
+            if (!line.startsWith(">")) return line;
+
+            return line.replace(/^>\s+/, ">");
+        })
+        .join("\n");
+}
+
+function looksLikeMarkdownTableRow(line: string): boolean {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("||") && trimmed.endsWith("||")) {
+        return false;
+    }
+
+    const pipeCount = (trimmed.match(/\|/g) ?? []).length;
+
+    if (pipeCount < 2) {
+        return false;
+    }
+
+    return trimmed.startsWith("|") || trimmed.endsWith("|") || pipeCount >= 2;
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+    return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+}
+
+function normalizeMarkdownTables(s: string): string {
+    return s
+        .split("\n")
+        .filter(line => !isMarkdownTableSeparator(line))
+        .map(line => {
+            if (!looksLikeMarkdownTableRow(line)) {
+                return line;
+            }
+
+            return line
+                .replace(/^\s*\|/, "")
+                .replace(/\|\s*$/, "")
+                .split("|")
+                .map(cell => cell.trim())
+                .filter(Boolean)
+                .join(" — ");
+        })
+        .join("\n");
+}
+
+export function escapeMarkdownV2Text(s: string): string {
+    s = unescapeAccidentalMarkdownV2(s);
+    s = normalizeTelegramQuoteLines(s);
+
+    s = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+    s = s.replace(/^\s*[-*_]{3,}\s*$/gm, "— — —");
+    s = s.replace(/^\s*[-*+]\s+(?=\S)/gm, "• ");
+    s = s.replace(/\*\*(.+?)\*\*/gs, "*$1*");
+    s = s.replace(/~~(.+?)~~/gs, "~$1~");
+    s = s.replace(/^#{1,6}\s+/gm, "");
+
+    s = s.replace(/```[a-zA-Z0-9_-]*\n?([\s\S]*?)```/g, (_, code) => {
+        return code.trim();
+    });
+
+    s = s.replace(/!\[([^\]]*)]\(([^)]+)\)/g, (_, alt, url) => {
+        return alt ? `${alt}: ${url}` : url;
+    });
+
+    s = normalizeMarkdownTables(s);
+
+    s = s
+        .split("\n")
+        .map(line => {
+            if (line.startsWith(">")) {
+                return escapeTelegramQuoteLine(line);
+            }
+
+            if (line === ">") {
+                return ">";
+            }
+
+            return escapeMarkdownV2PreservingAllowedFormatting(line);
+        })
+        .join("\n");
+
+    s = s.replace(/\n{3,}/g, "\n\n");
+
+    return s.trim();
 }
 
 export async function getFileUrl(fileId: string): Promise<string> {

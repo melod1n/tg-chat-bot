@@ -58,7 +58,10 @@ export class MistralChat extends ChatCommand {
             };
         });
         chatMessages.reverse();
-        chatMessages.unshift({role: "system", content: [{type: "text", text: Environment.SYSTEM_PROMPT}]});
+
+        if (Environment.SYSTEM_PROMPT) {
+            chatMessages.unshift({role: "system", content: [{type: "text", text: Environment.SYSTEM_PROMPT}]});
+        }
 
         let waitMessage: Message;
 
@@ -116,7 +119,7 @@ export class MistralChat extends ChatCommand {
                             chat_id: chatId,
                             message_id: waitMessage.message_id,
                             text: escapeMarkdownV2Text(text),
-                            parse_mode: "Markdown"
+                            parse_mode: "MarkdownV2"
                         }
                     ).catch(logError);
 

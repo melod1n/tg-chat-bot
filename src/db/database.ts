@@ -2,6 +2,7 @@ import * as fs from "fs";
 import {Environment} from "../common/environment";
 import {logError} from "../util/utils";
 import {Answers} from "../model/answers";
+import path from "node:path";
 
 type DataJsonFile = {
     admins: number[]
@@ -25,6 +26,19 @@ export async function readData(): Promise<void> {
         logError(e);
         return Promise.reject(e);
     }
+}
+
+export async function readPrompts(): Promise<void> {
+    try {
+        const prompt = fs.readFileSync(path.join(Environment.DATA_PATH, "system_prompt.txt")).toString().trim();
+        if (prompt.length) {
+            Environment.setSystemPrompt(prompt);
+        }
+    } catch (e) {
+        logError(e);
+    }
+
+    return Promise.resolve();
 }
 
 export async function saveData(): Promise<void> {

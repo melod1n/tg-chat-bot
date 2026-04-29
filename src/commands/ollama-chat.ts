@@ -44,7 +44,10 @@ export class OllamaChat extends ChatCommand {
             };
         });
         chatMessages.reverse();
-        chatMessages.unshift({role: "system", content: Environment.SYSTEM_PROMPT, images: []});
+
+        if (Environment.SYSTEM_PROMPT) {
+            chatMessages.unshift({role: "system", content: Environment.SYSTEM_PROMPT, images: []});
+        }
 
         let waitMessage: Message;
 

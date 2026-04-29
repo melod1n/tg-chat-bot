@@ -44,7 +44,10 @@ export class GeminiChat extends ChatCommand {
             };
         });
         chatMessages.reverse();
-        chatMessages.unshift({role: "system", content: Environment.SYSTEM_PROMPT});
+
+        if (Environment.SYSTEM_PROMPT) {
+            chatMessages.unshift({role: "system", content: Environment.SYSTEM_PROMPT});
+        }
 
         let chatContent = "";
         for (const part of chatMessages) {

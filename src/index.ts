@@ -20,7 +20,7 @@ import {Ping} from "./commands/ping";
 import {RandomString} from "./commands/random-string";
 import {SystemInfo} from "./commands/system-info";
 import {Test} from "./commands/test";
-import {readData, retrieveAnswers} from "./db/database";
+import {readData, readPrompts, retrieveAnswers} from "./db/database";
 import {Uptime} from "./commands/uptime";
 import {WhatBetter} from "./commands/what-better";
 import {When} from "./commands/when";
@@ -252,6 +252,10 @@ async function shutdown(signal: NodeJS.Signals) {
 async function main() {
     const start = Date.now();
 
+    await readPrompts();
+
+    console.log(Environment.SYSTEM_PROMPT);
+    
     console.log(
         `TEST_ENVIRONMENT: ${Environment.TEST_ENVIRONMENT}\n` +
         `DATA_PATH: ${Environment.DATA_PATH}\n` +
