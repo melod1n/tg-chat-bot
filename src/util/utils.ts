@@ -1424,7 +1424,9 @@ export async function processNewMessage(msg: Message): Promise<void> {
     const textToCheck = startsWithPrefix ? messageWithoutPrefix : cmdText;
 
     if (Environment.PROCESS_LINKS && await processYouTubeLink(msg, getFirstLink(msg))) return;
-    if (!startsWithPrefix && msg.chat.type !== "private") return;
+
+    if (msg.chat.type !== "private" && (!msg.reply_to_message || msg.reply_to_message.from.id !== botUser.id)) return;
+
     if (msg.chat.type === "private" && !Environment.ADMIN_IDS.has(msg.chat.id)) return;
 
     switch (Environment.DEFAULT_AI_PROVIDER) {
