@@ -312,6 +312,8 @@ export async function sendMessage(options: SendOptions): Promise<Message> {
         reply_markup: options.reply_markup,
     });
 
+    await MessageStore.put(response);
+
     return Promise.resolve(response);
 }
 
@@ -337,6 +339,8 @@ export async function replyToMessage(options: SendOptions): Promise<Message> {
         },
         link_preview_options: options.link_preview_options
     });
+
+    await MessageStore.put(response);
 
     return Promise.resolve(response);
 }
@@ -563,7 +567,14 @@ function escapeMarkdownV2PreservingAllowedFormatting(s: string): string {
 }
 
 function unescapeAccidentalMarkdownV2(s: string): string {
-    return s.replace(/\\([_*\[\]()~`>#+\-=|{}.!\\])/g, "$1");
+    let prev: string;
+
+    do {
+        prev = s;
+        s = s.replace(/\\([_*\[\]()~`>#+\-=|{}.!\\])/g, "$1");
+    } while (s !== prev);
+
+    return s;
 }
 
 function escapeTelegramQuoteLine(line: string): string {
@@ -726,6 +737,8 @@ export function cutPrefixes(msg: Message | StoredMessage | string): string {
     });
 
     const text = extractTextMessage(msg);
+    if (!text || !text.length) return "";
+
     let newText = text;
 
     for (const prefix of prefixes) {

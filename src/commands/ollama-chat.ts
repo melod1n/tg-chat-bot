@@ -143,7 +143,7 @@ export class OllamaChat extends ChatCommand {
                             chat_id: chatId,
                             message_id: waitMessage.message_id,
                             text: escapeMarkdownV2Text(text),
-                            parse_mode: "Markdown",
+                            parse_mode: "MarkdownV2",
                             reply_markup: cancelMarkup
                         }).catch(logError);
 
@@ -220,7 +220,10 @@ export class OllamaChat extends ChatCommand {
                         waitMessage.reply_to_message = msg;
                         waitMessage.text = currentText;
                         await MessageStore.put(waitMessage);
-                        await oldReplyToMessage(waitMessage, `⏱️ ${diff}s`);
+
+                        if (Environment.SEND_TIME_TOOK) {
+                            await replyToMessage({message: waitMessage, text: `⏱️ ${diff}s`});
+                        }
                         break;
                     }
                 }

@@ -9,7 +9,7 @@ import {
     collectReplyChainText,
     escapeMarkdownV2Text,
     logError,
-    oldReplyToMessage,
+    oldReplyToMessage, replyToMessage,
     startIntervalEditor
 } from "../util/utils";
 import {ChatCommand} from "../base/chat-command";
@@ -108,7 +108,7 @@ export class GeminiChat extends ChatCommand {
                             chat_id: chatId,
                             message_id: waitMessage.message_id,
                             text: escapeMarkdownV2Text(text),
-                            parse_mode: "Markdown"
+                            parse_mode: "MarkdownV2"
                         }
                     ).catch(logError);
 
@@ -167,7 +167,10 @@ export class GeminiChat extends ChatCommand {
                 waitMessage.reply_to_message = msg;
                 waitMessage.text = currentText;
                 await MessageStore.put(waitMessage);
-                await oldReplyToMessage(waitMessage, `⏱️ ${diff}s`);
+
+                if (Environment.SEND_TIME_TOOK) {
+                    await replyToMessage({message: waitMessage, text: `⏱️ ${diff}s`});
+                }
             }
         } catch (error) {
             logError(error);

@@ -37,6 +37,7 @@ export class Environment {
     static IMAGE_HANDLE_FALLBACK_POLICY: ImageHandleFallbackPolicy;
 
     static SYSTEM_PROMPT?: string;
+    static SEND_TIME_TOOK: boolean;
 
     static OLLAMA_ADDRESS?: string;
     static OLLAMA_MODEL?: string;
@@ -111,6 +112,8 @@ export class Environment {
         } else {
             Environment.IMAGE_HANDLE_FALLBACK_POLICY = ImageHandleFallbackPolicy.NOTIFY_USER;
         }
+
+        Environment.SEND_TIME_TOOK = ifTrue(process.env.SEND_TOOK_TIME || false);
 
         Environment.OLLAMA_ADDRESS = process.env.OLLAMA_ADDRESS;
         Environment.OLLAMA_MODEL = process.env.OLLAMA_MODEL || "gemma3:4b";

@@ -100,7 +100,7 @@ export class OpenAIChat extends ChatCommand {
                             chat_id: chatId,
                             message_id: waitMessage.message_id,
                             text: escapeMarkdownV2Text(text),
-                            parse_mode: "Markdown"
+                            parse_mode: "MarkdownV2"
                         }
                     ).catch(logError);
 
@@ -151,7 +151,10 @@ export class OpenAIChat extends ChatCommand {
                 waitMessage.reply_to_message = msg;
                 waitMessage.text = currentText;
                 await MessageStore.put(waitMessage);
-                await replyToMessage({message: waitMessage, text: `⏱️ ${diff}s`});
+
+                if (Environment.SEND_TIME_TOOK) {
+                    await replyToMessage({message: waitMessage, text: `⏱️ ${diff}s`});
+                }
             }
         } catch (error) {
             logError(error);
