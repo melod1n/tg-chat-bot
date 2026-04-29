@@ -168,7 +168,9 @@ export class MistralChat extends ChatCommand {
                 waitMessage.reply_to_message = msg;
                 waitMessage.text = currentText;
                 await MessageStore.put(waitMessage);
-                await oldReplyToMessage(waitMessage, `⏱️ ${diff}s`);
+                if (Environment.SEND_TIME_TOOK) {
+                    await replyToMessage({message: waitMessage, text: `⏱️ ${diff}s`});
+                }
             }
         } catch (error) {
             logError(error);
