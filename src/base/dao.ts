@@ -1,9 +1,9 @@
-export abstract class Dao<I> {
+export abstract class Dao<I, GetByIdParams, GetByIdsParams, InsertParams> {
     abstract getAll(): Promise<I[]>;
 
-    abstract getById(params: never): Promise<I | null>
+    abstract getById(params: GetByIdParams): Promise<I | null>;
 
-    abstract getByIds(params: never): Promise<I[]>
+    abstract getByIds(params: GetByIdsParams): Promise<I[]>;
 
-    abstract insert(items: never[]): Promise<true>
+    abstract insert(items: InsertParams): Promise<true>;
 }

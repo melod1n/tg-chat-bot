@@ -1,88 +1,56 @@
 import {Command} from "../base/command";
 import {getRandomInt, getRangedRandomInt, logError, oldReplyToMessage} from "../util/utils";
 import {Message} from "typescript-telegram-bot-api";
+import {Environment} from "../common/environment";
 
 export class When extends Command {
     command = ["when", "когда"];
     argsMode = "required" as const;
 
-    title = "/when [value]";
-    description = "random date";
+    title = Environment.commandTitles.when;
+    description = Environment.commandDescriptions.when;
 
     async execute(msg: Message) {
-        let text = "через ";
+        let text = Environment.getWhenPrefixText();
 
         const type = getRandomInt(8);
 
         switch (type) {
             case 0:
-                text = "сейчас";
+                text = Environment.whenNowText;
                 break;
             case 1:
-                text = "никогда";
+                text = Environment.whenNeverText;
                 break;
             case 2: //seconds
             {
                 const seconds = getRangedRandomInt(1, 60);
-
-                text += `${seconds} `;
-
-                text += (
-                    (seconds == 1 || seconds % 10 == 1) ? "секунду" :
-                        ((seconds > 1 && seconds < 5) || (seconds % 10 > 1 && seconds % 10 < 5)) ? "секунды" : "секунд"
-                );
+                text = Environment.getWhenDurationText(seconds, Environment.whenSecondUnitText);
                 break;
             }
             case 3: {
                 const minutes = getRangedRandomInt(1, 60);
-
-                text += `${minutes} `;
-
-                text += (
-                    (minutes == 1 || minutes % 10 == 1) ? "минуту" :
-                        ((minutes > 1 && minutes < 5) || (minutes % 10 > 1 && minutes % 10 < 5)) ? "минуты" : "минут"
-                );
+                text = Environment.getWhenDurationText(minutes, Environment.whenMinuteUnitText);
                 break;
             }
             case 4: {
                 const hours = getRangedRandomInt(1, 24);
-
-                text += `${hours} `;
-
-                text += (
-                    (hours == 1 || hours % 10 == 1) ? "час" :
-                        ((hours > 1 && hours < 5) || (hours % 10 > 1 && hours % 10 < 5)) ? "часа" : "часов"
-                );
+                text = Environment.getWhenDurationText(hours, Environment.whenHourUnitText);
                 break;
             }
             case 5: {
                 const weeks = getRangedRandomInt(1, 4);
-
-                text += `${weeks} `;
-
-                text += (weeks == 1 ? "неделю" : "недель");
+                text = Environment.getWhenDurationText(weeks, Environment.whenWeekUnitText);
                 break;
             }
             case 6: {
                 const months = getRandomInt(12);
-
-                text += `${months} `;
-
-                text += (
-                    (months == 1 || months % 10 == 1) ? "месяц" :
-                        ((months > 1 && months < 5) || (months % 10 > 1 && months % 10 < 5)) ? "месяца" : "месяцев"
-                );
+                text = Environment.getWhenDurationText(months, Environment.whenMonthUnitText);
                 break;
             }
             case 7: {
                 const years = getRangedRandomInt(1, 100);
-
-                text += `${years} `;
-
-                text += (
-                    (years == 1 || years % 10 == 1) ? "год" :
-                        ((years > 1 && years < 5) || (years % 10 > 1 && years % 10 < 5)) ? "года" : "лет"
-                );
+                text = Environment.getWhenDurationText(years, Environment.whenYearUnitText);
                 break;
             }
         }

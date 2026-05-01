@@ -1,30 +1,34 @@
 import {Command} from "../base/command";
 import {getRandomInt, logError, replyToMessage} from "../util/utils";
 import {Message} from "typescript-telegram-bot-api";
+import {Environment} from "../common/environment";
 
 export class RandomString extends Command {
     argsMode = "optional" as const;
 
-    title = "/randomString";
-    description = "literally random string (up to 4096 symbols)";
+    title = Environment.commandTitles.randomString;
+    description = Environment.commandDescriptions.randomString;
 
     async execute(msg: Message) {
-        const split = msg.text.split(" ");
-        const l = parseInt(split.length > 1 ? split[1] : "1");
+        if (!msg.text) return;
 
-        const length = (l <= 0 || l > 4096) ? 1 : l;
+        const [, lengthArg] = msg.text.trim().split(/\s+/);
+        const requestedLength = Number(lengthArg ?? 1);
 
+        const length = Number.isSafeInteger(requestedLength)
+            ? Math.min(4096, Math.max(1, requestedLength))
+            : 1;
+
+        const characters = Array.from("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя0123456789");
         let result = "";
 
-        const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя0123456789";
-
         for (let i = 0; i < length; i++) {
-            result += characters.charAt(getRandomInt(characters.length));
+            result += characters[getRandomInt(characters.length)];
         }
 
         await replyToMessage({
             message: msg,
-            text: "<blockquote expandable>" + result + "</blockquote>",
+            text: Environment.getExpandableBlockquoteText(result),
             parse_mode: "HTML"
         }).catch(logError);
     }

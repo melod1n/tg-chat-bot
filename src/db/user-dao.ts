@@ -1,24 +1,23 @@
 import {StoredUser} from "../model/stored-user";
 import {Dao} from "../base/dao";
+import {appLogger} from "../logging/logger";
 import {DatabaseManager} from "./database-manager";
-import {UserInsert, usersTable} from "./schema";
-import {eq} from "drizzle-orm";
-import {inArray} from "drizzle-orm/sql/expressions/conditions";
 import {User} from "typescript-telegram-bot-api";
-import {boolToInt, buildExcludedSet} from "../util/utils";
+import {boolToInt} from "../util/utils";
+import {UserDbRow} from "./db-types";
 
-export class UserDao extends Dao<StoredUser> {
+export class UserDao extends Dao<StoredUser, {id: number}, {ids: number[]}, UserDbRow | UserDbRow[]> {
 
-    private tag: string = "UserDao";
+    private readonly logger = appLogger.child("dao:users");
 
     override async getAll(): Promise<StoredUser[]> {
         const then = Date.now();
 
-        const users = await DatabaseManager.db.select().from(usersTable);
+        const users = await DatabaseManager.getAllUsers();
 
         const now = Date.now();
         const diff = now - then;
-        console.log(`${this.tag}: getAll()`, `took ${diff}ms; size: ${users.length}`);
+        this.logger.trace("get_all", {dao: "users", duration: `${diff}ms`, size: users.length});
 
         return this.mapFrom(users);
     }
@@ -26,79 +25,86 @@ export class UserDao extends Dao<StoredUser> {
     override async getById(params: { id: number }): Promise<StoredUser | null> {
         const then = Date.now();
 
-        const users =
-            await DatabaseManager.db.select()
-                .from(usersTable)
-                .where(
-                    eq(usersTable.id, params.id)
-                );
+        const user = await DatabaseManager.getUserById(params.id);
 
         const now = Date.now();
         const diff = now - then;
-        console.log(`${this.tag}: getById(${params.id})`, `took ${diff}ms; size: ${users.length}`);
+        this.logger.trace("get_by_id", {dao: "users", id: params.id, duration: `${diff}ms`, size: user ? 1 : 0});
 
-        const u = users[0];
-        if (!u) return null;
-        return this.mapFrom([u])[0];
+        if (!user) return null;
+        return this.mapFrom([user])[0];
     }
 
     override async getByIds(params: { ids: number[] }): Promise<StoredUser[]> {
         const then = Date.now();
 
-        const users =
-            await DatabaseManager.db.select()
-                .from(usersTable)
-                .where(
-                    inArray(usersTable.id, params.ids)
-                );
+        const users = await DatabaseManager.getUsersByIds(params.ids);
 
         const now = Date.now();
         const diff = now - then;
-        console.log(`${this.tag}: getByIds(${params.ids})`, `took ${diff}ms; size: ${users.length}`);
+        this.logger.trace("get_by_ids", {dao: "users", ids: params.ids, duration: `${diff}ms`, size: users.length});
 
         return this.mapFrom(users);
     }
 
-    override async insert(values: UserInsert[] | UserInsert): Promise<true> {
+    override async insert(values: UserDbRow[] | UserDbRow): Promise<true> {
         const rows = Array.isArray(values) ? values : [values];
+        if (!rows.length) return true;
 
         const then = Date.now();
-        const r = await DatabaseManager.db
-            .insert(usersTable)
-            .values(rows)
-            .onConflictDoUpdate({
-                target: usersTable.id,
-                set: buildExcludedSet(usersTable, ["id"])
-            });
+        await DatabaseManager.upsertUsers(rows);
 
         const now = Date.now();
         const diff = now - then;
-        console.log(`${this.tag}: insert(size: ${rows.length})`, `took ${diff}ms; inserted: ${r.rowsAffected}`);
+        this.logger.debug("insert", {dao: "users", duration: `${diff}ms`, size: rows.length});
         return true;
     }
 
-    mapTo(users: User[]): UserInsert[] {
+    async updateSettings(
+        id: number,
+        settings: Partial<Pick<StoredUser, "interfaceLanguage" | "aiProvider" | "aiResponseLanguage" | "aiContextSize" | "aiVoiceMode" | "aiImageOutputMode">>
+    ): Promise<true> {
+        await DatabaseManager.updateUserSettings(id, settings);
+
+        return true;
+    }
+
+    mapTo(users: User[]): UserDbRow[] {
         return users.map(u => {
             return {
                 id: u.id,
                 isBot: boolToInt(u.is_bot),
                 firstName: u.first_name,
-                lastName: u.last_name,
-                userName: u.username,
-                isPremium: boolToInt(u.is_premium)
+                lastName: u.last_name ?? null,
+                userName: u.username ?? null,
+                isPremium: boolToInt(u.is_premium),
+                langCode: u.language_code ?? null,
+                interfaceLanguage: null,
+                aiProvider: null,
+                aiResponseLanguage: null,
+                aiContextSize: null,
+                aiVoiceMode: null,
+                aiImageOutputMode: null,
             };
         });
     }
 
-    mapFrom(users: UserInsert[]): StoredUser[] {
+    mapFrom(users: UserDbRow[]): StoredUser[] {
         return users.map(u => {
             return {
                 id: u.id,
                 isBot: u.isBot === 1,
                 firstName: u.firstName,
-                lastName: u.lastName,
-                userName: u.userName,
-                isPremium: u.isPremium === 1
+                lastName: u.lastName === null ? undefined : u.lastName,
+                userName: u.userName === null ? undefined : u.userName,
+                isPremium: u.isPremium === 1,
+                langCode: u.langCode === null ? undefined : u.langCode,
+                interfaceLanguage: u.interfaceLanguage === null ? undefined : u.interfaceLanguage,
+                aiProvider: u.aiProvider === null ? undefined : u.aiProvider,
+                aiResponseLanguage: u.aiResponseLanguage === null ? undefined : u.aiResponseLanguage,
+                aiContextSize: u.aiContextSize === null ? undefined : u.aiContextSize,
+                aiVoiceMode: u.aiVoiceMode === null ? undefined : u.aiVoiceMode,
+                aiImageOutputMode: u.aiImageOutputMode === null ? undefined : u.aiImageOutputMode,
             };
         });
     }

@@ -9,7 +9,7 @@ export abstract class Command {
     command?: string | string[];
     argsMode: ArgsMode = "none";
 
-    requirements?: Requirements = null;
+    requirements?: Requirements | null = null;
     title?: string;
     description?: string;
 
@@ -24,7 +24,7 @@ export abstract class Command {
 
     abstract execute(
         msg: Message,
-        match?: RegExpExecArray
+        match?: RegExpExecArray | null
     ): Promise<void>;
 }
 
@@ -51,8 +51,8 @@ export function createCommandRegExp(
         argsMode === "none"
             ? "\\s*$"
             : argsMode === "required"
-                ? "\\s+([\\s\\S]+)\\s*$"          // (3)=args обязателен
-                : "(?:\\s+([\\s\\S]+))?\\s*$";   // (3)=args опционален
+                ? "\\s+([\\s\\S]+)\\s*$"          // (3)=args required
+                : "(?:\\s+([\\s\\S]+))?\\s*$";   // (3)=args optional
 
     return new RegExp(base + tail, "i");
 }

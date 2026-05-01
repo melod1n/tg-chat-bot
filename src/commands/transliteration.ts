@@ -1,6 +1,7 @@
 import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {logError, oldReplyToMessage, randomValue} from "../util/utils";
+import {Environment} from "../common/environment";
 
 const EN =
     "`qwertyuiop[]asdfghjkl;'zxcvbnm,./" +
@@ -38,7 +39,7 @@ export const toEnLayout = (text: string) => swapLayout(text, ruToEn);
 const reCyr = /\p{Script=Cyrillic}/u;
 const reLat = /\p{Script=Latin}/u;
 
-export type ScriptGuess = "ru" | "en" | "mixed" | "unknown";
+export type ScriptGuess = "ru" | "en" | "mixed" | "other";
 
 export function detectScript(text: string): ScriptGuess {
     let cyr = 0, lat = 0;
@@ -48,7 +49,7 @@ export function detectScript(text: string): ScriptGuess {
         else if (reLat.test(ch)) lat++;
     }
 
-    if (cyr === 0 && lat === 0) return "unknown";
+    if (cyr === 0 && lat === 0) return "other";
     if (cyr === lat) return "mixed";
     return cyr > lat ? "ru" : "en";
 }
@@ -60,7 +61,7 @@ export function fixLayoutAuto(
 ): string {
     let guess = detectScript(text);
     if (guess === "mixed") {
-        guess = randomValue([true, false]) ? "ru" : "en";
+        guess = (randomValue([true, false]) ?? false) ? "ru" : "en";
     }
 
     if (guess === "en") {
@@ -77,16 +78,18 @@ export function fixLayoutAuto(
 export class Transliteration extends Command {
     command = ["transliteration", "tr"];
 
-    title = "/tr [text or reply]";
-    description = "Transliteration EN <--> RU";
+    title = Environment.commandTitles.transliteration;
+    description = Environment.commandDescriptions.transliteration;
 
     async execute(msg: Message): Promise<void> {
+        if (!msg.text && !msg.caption) return;
+
         let text: string = "";
 
         if (msg.reply_to_message) {
             text = (msg.reply_to_message.text || msg.reply_to_message.caption || "");
         } else {
-            const split = (msg.text || msg.caption).split("/tr ");
+            const split = (<string>(msg.text || msg.caption)).split("/tr ");
             if (split.length > 1) {
                 text = split[1].trim();
             }

@@ -4,7 +4,7 @@ export class Requirements {
     requirements: Requirement[] = [];
 
     private constructor(requirements?: Requirement[]) {
-        this.requirements = requirements;
+        this.requirements = requirements || [];
     }
 
     static Build(...requirements: Requirement[]): Requirements {

@@ -8,8 +8,8 @@ import {botUser} from "../index";
 
 export class AdminsRemove extends Command {
     command = "removeAdmin";
-    title = "/removeAdmin";
-    description = "Remove user from admins";
+    title = Environment.commandTitles.adminsRemove;
+    description = Environment.commandDescriptions.adminsRemove;
 
     requirements = Requirements.Build(
         Requirement.BOT_CREATOR,
@@ -18,25 +18,25 @@ export class AdminsRemove extends Command {
     );
 
     async execute(msg: Message): Promise<void> {
-        if (!msg.reply_to_message) return;
+        if (!msg.reply_to_message || !msg.reply_to_message.from) return;
 
         const id = msg.reply_to_message.from.id;
         const text = fullName(msg.reply_to_message.from);
 
         if (id === botUser.id) {
-            await oldSendMessage(msg, "Бот не может сам себя убрать из админов").catch(logError);
+            await oldSendMessage(msg, Environment.botCannotRemoveItselfFromAdminsText).catch(logError);
             return;
         }
 
         if (id === Environment.CREATOR_ID) {
-            await oldSendMessage(msg, "Создатель бота не может перестать быть админом").catch(logError);
+            await oldSendMessage(msg, Environment.botCreatorCannotStopBeingAdminText).catch(logError);
             return;
         }
 
         if (await Environment.removeAdmin(id)) {
-            await oldSendMessage(msg, text + " больше не админ!").catch(logError);
+            await oldSendMessage(msg, Environment.getUserNoLongerAdminText(text)).catch(logError);
         } else {
-            await oldSendMessage(msg, text + " и так не был админом 🤔").catch(logError);
+            await oldSendMessage(msg, Environment.getUserWasNotAdminText(text)).catch(logError);
         }
     }
 }

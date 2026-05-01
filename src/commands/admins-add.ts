@@ -8,8 +8,8 @@ import {botUser} from "../index";
 
 export class AdminsAdd extends Command {
     command = "addAdmin";
-    title = "/addAdmin";
-    description = "Add user to admins";
+    title = Environment.commandTitles.adminsAdd;
+    description = Environment.commandDescriptions.adminsAdd;
 
     requirements = Requirements.Build(
         Requirement.BOT_CREATOR,
@@ -18,25 +18,25 @@ export class AdminsAdd extends Command {
     );
 
     async execute(msg: Message): Promise<void> {
-        if (!msg.reply_to_message) return;
+        if (!msg.reply_to_message || !msg.reply_to_message.from) return;
 
         const id = msg.reply_to_message.from.id;
         const text = fullName(msg.reply_to_message.from);
 
         if (id === botUser.id) {
-            await oldSendMessage(msg, "Бот не может сам себя сделать админом").catch(logError);
+            await oldSendMessage(msg, Environment.botCannotMakeItselfAdminText).catch(logError);
             return;
         }
 
         if (id === Environment.CREATOR_ID) {
-            await oldSendMessage(msg, "Создатель бота и так является админом").catch(logError);
+            await oldSendMessage(msg, Environment.botCreatorAlreadyAdminText).catch(logError);
             return;
         }
 
         if (await Environment.addAdmin(id)) {
-            await oldSendMessage(msg, text + " теперь админ!").catch(logError);
+            await oldSendMessage(msg, Environment.getUserIsNowAdminText(text)).catch(logError);
         } else {
-            await oldSendMessage(msg, text + " и так уже админ 🤔").catch(logError);
+            await oldSendMessage(msg, Environment.getUserAlreadyAdminText(text)).catch(logError);
         }
     }
 }

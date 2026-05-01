@@ -1,6 +1,9 @@
 import {logError} from "./utils";
 import fs from "node:fs";
 import path from "node:path";
+import {appLogger} from "../logging/logger";
+
+const logger = appLogger.child("files");
 
 export function clearUpFolderFromOldFiles(folder: string, recursive = true) {
     fs.readdir(folder, (err, files) => {
@@ -29,15 +32,20 @@ export function clearUpFolderFromOldFiles(folder: string, recursive = true) {
                     }
                 }
             } catch (e) {
-                logError(e);
+                logError(e instanceof Error ? e : String(e));
             }
         });
 
-        console.log("filenamesToDelete", filenamesToDelete);
+        logger.debug("cleanup.candidates", {folder, recursive, count: filenamesToDelete.length, filenamesToDelete});
         if (filenamesToDelete.length) {
             filenamesToDelete.forEach((filename) => {
                 fs.rm(filename, (e) => {
-                    if (e) logError(e);
+                    if (e) {
+                        logger.error("cleanup.delete_failed", {filename, error: e instanceof Error ? e : String(e)});
+                        logError(e instanceof Error ? e : String(e));
+                    } else {
+                        logger.debug("cleanup.deleted", {filename});
+                    }
                 });
             });
         }

@@ -7,8 +7,8 @@ import {botUser} from "../index";
 import {Environment} from "../common/environment";
 
 export class Ignore extends Command {
-    title = "/ignore";
-    description = "Bot will ignore user";
+    title = Environment.commandTitles.ignore;
+    description = Environment.commandDescriptions.ignore;
 
     requirements = Requirements.Build(
         Requirement.BOT_ADMIN,
@@ -19,25 +19,25 @@ export class Ignore extends Command {
     );
 
     async execute(msg: Message) {
-        if (!msg.reply_to_message) return;
+        if (!msg.reply_to_message || !msg.reply_to_message.from) return;
 
         const id = msg.reply_to_message.from.id;
         const text = fullName(msg.reply_to_message.from);
 
         if (id === botUser.id) {
-            await oldSendMessage(msg, "Бот не может сам себя игнорировать").catch(logError);
+            await oldSendMessage(msg, Environment.botWillNotIgnoreItselfText).catch(logError);
             return;
         }
 
         if (id === Environment.CREATOR_ID) {
-            await oldSendMessage(msg, "Бот не будет игнорировать своего создателя").catch(logError);
+            await oldSendMessage(msg, Environment.botWillNotIgnoreCreatorText).catch(logError);
             return;
         }
 
         if (await Environment.addMute(id)) {
-            await oldSendMessage(msg, text + " в муте! 🔇").catch(logError);
+            await oldSendMessage(msg, Environment.getUserIgnoredText(text)).catch(logError);
         } else {
-            await oldSendMessage(msg, text + " уже в муте 🤔").catch(logError);
+            await oldSendMessage(msg, Environment.getUserAlreadyIgnoredText(text)).catch(logError);
         }
     }
 }

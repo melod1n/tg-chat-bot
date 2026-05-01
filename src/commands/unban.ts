@@ -5,10 +5,11 @@ import {Message} from "typescript-telegram-bot-api";
 import {bot, botUser} from "../index";
 import {fullName, logError, oldReplyToMessage, oldSendMessage} from "../util/utils";
 import {Environment} from "../common/environment";
+import {enqueueTelegramApiCall} from "../util/telegram-api-queue";
 
 export class Unban extends Command {
-    title = "/unban [reply]";
-    description = "unban user from chat";
+    title = Environment.commandTitles.unban;
+    description = Environment.commandDescriptions.unban;
 
     requirements = Requirements.Build(
         Requirement.BOT_ADMIN,
@@ -19,32 +20,35 @@ export class Unban extends Command {
     );
 
     async execute(msg: Message) {
-        if (!msg.reply_to_message) return;
+        if (!msg.reply_to_message || !msg.reply_to_message.from) return;
 
         const user = msg.reply_to_message.from;
         const userId = user.id;
 
         if (userId === botUser.id) {
-            await oldReplyToMessage(msg, "Бот и так не в бане сам у себя.").catch(logError);
+            await oldReplyToMessage(msg, Environment.botIsNotBannedByItselfText).catch(logError);
             return;
         }
 
         if (userId === Environment.CREATOR_ID) {
-            await oldReplyToMessage(msg, "Создатель бота и так не в бане и никогда не будет.").catch(logError);
+            await oldReplyToMessage(msg, Environment.botCreatorNeverBannedText).catch(logError);
             return;
         }
 
-        if (msg.from.id !== Environment.CREATOR_ID && Environment.ADMIN_IDS.has(userId)) {
-            await oldReplyToMessage(msg, "Админимтраторы бота и так не в бане.").catch(logError);
+        if (msg.from?.id !== Environment.CREATOR_ID && Environment.ADMIN_IDS.has(userId)) {
+            await oldReplyToMessage(msg, Environment.botAdminsNotBannedText).catch(logError);
             return;
         }
 
-        bot.unbanChatMember({chat_id: msg.chat.id, user_id: userId})
+        enqueueTelegramApiCall(
+            () => bot.unbanChatMember({chat_id: msg.chat.id, user_id: userId}),
+            {method: "unbanChatMember", chatId: msg.chat.id, chatType: msg.chat.type}
+        )
             .then(async () => {
-                await oldSendMessage(msg, `${fullName(user)} разбанен ⛓️‍💥`).catch(logError);
+                await oldSendMessage(msg, Environment.getUserUnbannedText(fullName(user))).catch(logError);
             })
             .catch(async () => {
-                await oldSendMessage(msg, `Не смог разбанить ${fullName(user)} ☹️`).catch(logError);
+                await oldSendMessage(msg, Environment.getUserUnbanFailedText(fullName(user))).catch(logError);
             });
     }
 }

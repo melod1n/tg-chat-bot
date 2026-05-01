@@ -1,4 +1,5 @@
 import * as si from "systeminformation";
+import {appLogger} from "../logging/logger";
 import {Command} from "../base/command";
 import {CallbackCommand} from "../base/callback-command";
 import {
@@ -16,40 +17,43 @@ import {
 } from "typescript-telegram-bot-api";
 import {Environment} from "../common/environment";
 import {TelegramError} from "typescript-telegram-bot-api/dist/errors";
-import {bot, botUser, callbackCommands, commands, messageDao, ollama, photoDir} from "../index";
+import {bot, botUser, callbackCommands, commands, messageDao, photoDir} from "../index";
 import os from "os";
 import axios from "axios";
-import {MessagePart} from "../common/message-part";
+import {MessageAudioPart, MessageImagePart, MessagePart} from "../common/message-part";
 import {StoredMessage} from "../model/stored-message";
 import sharp from "sharp";
 import {UserStore} from "../common/user-store";
-import * as orm from "drizzle-orm";
-import {sql, type SQL} from "drizzle-orm";
 import fs from "node:fs";
 import path from "node:path";
 import {MessageStore} from "../common/message-store";
 import {SystemInfo} from "../commands/system-info";
 import {PrefixResponse} from "../commands/prefix-response";
-import {OllamaChat} from "../commands/ollama-chat";
-import {getYouTubeVideoId, getYouTubeVideoInfo, isVideoExists} from "./ytdl";
-import {YouTubeDownload} from "../commands/youtube-download";
 import {ChatCommand} from "../base/chat-command";
-import {WebSearchResponse} from "../model/web-search-response";
-import {GeminiChat} from "../commands/gemini-chat";
-import {MistralChat} from "../commands/mistral-chat";
-import {OpenAIChat} from "../commands/openai-chat";
 import {AiProvider} from "../model/ai-provider";
-import {AiModelCapabilities} from "../model/ai-model-capabilities";
-import {OllamaGetModel} from "../commands/ollama-get-model";
-import {GeminiGetModel} from "../commands/gemini-get-model";
-import {MistralGetModel} from "../commands/mistral-get-model";
-import {OpenAIGetModel} from "../commands/openai-get-model";
 import {SendOptions} from "../model/send-options";
 import {EditOptions} from "../model/edit-options";
-import VideoInfo from "youtubei.js/dist/src/parser/youtube/VideoInfo";
-import {DownloadYtVideo} from "../callback_commands/download-yt-video";
-import {TryAgain} from "../callback_commands/try-again";
 import {StoredUser} from "../model/stored-user";
+import {StoredAttachment} from "../model/stored-attachment";
+import {AiDownloadedFile} from "../ai/telegram-attachments";
+import {runUnifiedAi} from "../ai/unified-ai-runner";
+import {enqueueTelegramApiCall} from "./telegram-api-queue";
+import {AsyncSemaphore, KeyedAsyncLock} from "./async-lock";
+import {resolveEffectiveAiProviderForUser, resolveInterfaceLocaleForUser} from "../common/user-ai-settings";
+import {Localization} from "../common/localization";
+import {createOllamaClient, resolveAiRuntimeTarget} from "../ai/ai-runtime-target";
+import {RandomUtils} from "./random-utils";
+import {HtmlUtils} from "./html-utils";
+import {ShellCommandResult, ShellCommandRunner} from "./shell-command-runner";
+import type {BoundaryValue, ErrorLike} from "../common/boundary-types";
+import {createStoredImageAttachment, photoCachePathForUniqueId, uniqueStoredAttachments} from "../common/stored-attachment-utils";
+import {runTelegramMessageAttachmentPipeline} from "../ai/user-request-pipeline";
+
+const imageProcessingSemaphore = new AsyncSemaphore(2);
+const fileWriteLocks = new KeyedAsyncLock();
+const logger = appLogger.child("utils");
+const requirementLogger = appLogger.child("requirements");
+const messageLogger = appLogger.child("messages");
 
 export const ignore = () => {
 };
@@ -66,8 +70,8 @@ export const ignoreIfMarkupFailed = (e: Error | TelegramError) => {
     }
 };
 
-export const logError = (e: Error | TelegramError | string) => {
-    console.error(e);
+export const logError = (error: Error | TelegramError | string | BoundaryValue | ErrorLike | null | undefined) => {
+    appLogger.error("error", {error: error instanceof Error ? error : String(error)});
 };
 
 export const errorPlaceholder = async (msg: Message) => {
@@ -89,10 +93,11 @@ export const isMessageTooLong = (e: Error | TelegramError) => {
 export function searchChatCommand(
     commands: Command[],
     text: string,
-    botUsername: string = botUser.username
+    botUsername: string | undefined = botUser.username
 ): Command | null {
     for (const command of commands) {
-        const match = command.finalRegexp.exec(text);
+        const finalRegexp = command.finalRegexp;
+        const match = finalRegexp.exec(text);
         if (!match) continue;
 
         const mentioned = match[2]?.toLowerCase();
@@ -127,7 +132,7 @@ export async function checkRequirements(cmd: Command | CallbackCommand | null, m
     let title: string;
 
     if (isChatCommand) {
-        title = cmd.title;
+        title = cmd.title || "";
     } else if (isCallbackCommand) {
         title = cmd.data;
     } else {
@@ -136,7 +141,7 @@ export async function checkRequirements(cmd: Command | CallbackCommand | null, m
 
     const cbId = cb?.id;
     const chatId = msg?.chat?.id || cb?.message?.chat?.id || -1;
-    const messageId = msg?.message_id || (cb && cb.message && "reply_to_message" in cb.message ? cb.message.reply_to_message.message_id : null) || -1;
+    const messageId = msg?.message_id || cb?.message?.message_id || -1;
     const fromId = msg?.from?.id || cb?.from?.id || -1;
     const chatType = msg?.chat?.type || cb?.message?.chat?.type || null;
 
@@ -148,7 +153,7 @@ export async function checkRequirements(cmd: Command | CallbackCommand | null, m
         !Environment.CHAT_IDS_WHITELIST.has(chatId) &&
         !Environment.ADMIN_IDS.has(chatId) &&
         !Environment.ADMIN_IDS.has(fromId)) {
-        console.log(`${title}: chatId whitelist ignored.`);
+        requirementLogger.debug("rejected.chat_whitelist", {title, chatId, fromId});
         return false;
     }
 
@@ -159,30 +164,33 @@ export async function checkRequirements(cmd: Command | CallbackCommand | null, m
         if (msg) {
             await replyToMessage({chat_id: chatId, message_id: messageId, text: text});
         } else if (cb) {
-            await bot.answerCallbackQuery({
-                callback_query_id: cbId,
-                text: text,
-                cache_time: 0,
-                show_alert: true
-            }).catch(logError);
+            await enqueueTelegramApiCall(
+                () => bot.answerCallbackQuery({
+                    callback_query_id: cbId || "",
+                    text: text,
+                    cache_time: 0,
+                    show_alert: true
+                }),
+                {method: "answerCallbackQuery", skipPerChatLimit: true}
+            ).catch(logError);
         }
     };
 
     if (reqs.isRequiresBotCreator() && fromId !== Environment.CREATOR_ID) {
-        console.log(`${title}: creatorId is bad`);
-        await notifyUser("Вы не являетесь создателем бота.");
+        requirementLogger.debug("rejected.creator", {title, fromId});
+        await notifyUser(Environment.notBotCreatorText);
         return false;
     }
 
     if (reqs.isRequiresBotAdmin() && !Environment.ADMIN_IDS.has(fromId)) {
-        console.log(`${title}: adminId is bad`);
-        await notifyUser("Вы не являетесь администратором бота.");
+        requirementLogger.debug("rejected.bot_admin", {title, fromId});
+        await notifyUser(Environment.notBotAdministratorText);
         return false;
     }
 
-    if (reqs.isRequiresChat() && msg.chat.type === "private") {
-        console.log(`${title}: chatId is bad`);
-        await notifyUser("Тут Вам не чат.");
+    if (reqs.isRequiresChat() && msg?.chat?.type === "private") {
+        requirementLogger.debug("rejected.chat_required", {title, chatId, chatType});
+        await notifyUser(Environment.notAChatText);
         return false;
     }
 
@@ -190,8 +198,8 @@ export async function checkRequirements(cmd: Command | CallbackCommand | null, m
         const member = await bot.getChatMember({chat_id: chatId, user_id: fromId});
 
         if (!isMemberAdmin(member)) {
-            console.log(`${title}: chatAdminId is bad`);
-            await notifyUser("Вы не являетесь администратором чата.");
+            requirementLogger.debug("rejected.chat_admin", {title, chatId, fromId});
+            await notifyUser(Environment.notChatAdministratorText);
             return false;
         }
     }
@@ -200,31 +208,47 @@ export async function checkRequirements(cmd: Command | CallbackCommand | null, m
         const member = await bot.getChatMember({chat_id: chatId, user_id: botUser.id});
 
         if (!isMemberAdmin(member)) {
-            console.log(`${title}: botChatAdminId is bad`);
-            await notifyUser("Бот не является администратором чата.");
+            requirementLogger.debug("rejected.bot_chat_admin", {title, chatId});
+            await notifyUser(Environment.botNotChatAdministratorText);
             return false;
         }
     }
 
     if (reqs.isRequiresReply() && !msg?.reply_to_message) {
-        console.log(`${title}: replyMessage is bad`);
-        await notifyUser("Отсутствует ответ на сообщение.");
+        requirementLogger.debug("rejected.reply_required", {title, chatId, messageId});
+        await notifyUser(Environment.replyRequiredText);
         return false;
     }
 
     if (reqs.isRequiresSameUser()) {
-        let originalFromId: number | null;
+        let originalFromId: number | undefined;
         try {
-            const originalMessage = await MessageStore.get(chatId, messageId);
-            originalFromId = originalMessage?.fromId;
+            if (cb?.message) {
+                const replyMessage = "reply_to_message" in cb.message ? cb.message.reply_to_message : undefined;
+                originalFromId = replyMessage?.from?.id;
+
+                if (!originalFromId && replyMessage?.message_id) {
+                    const originalMessage = await MessageStore.get(chatId, replyMessage.message_id);
+                    originalFromId = originalMessage?.fromId;
+                }
+
+                if (!originalFromId) {
+                    const callbackMessage = await MessageStore.get(chatId, cb.message.message_id);
+                    const originalMessage = await MessageStore.get(chatId, callbackMessage?.replyToMessageId);
+                    originalFromId = originalMessage?.fromId;
+                }
+            } else {
+                const originalMessage = await MessageStore.get(chatId, messageId);
+                originalFromId = originalMessage?.fromId;
+            }
         } catch (e) {
-            logError(e);
-            originalFromId = null;
+            logError(e instanceof Error ? e : String(e));
+            originalFromId = undefined;
         }
 
-        if (originalFromId && fromId !== originalFromId && fromId !== Environment.CREATOR_ID) {
-            console.log(`${title}: sameUser is bad`);
-            await notifyUser("Только автор оригинального сообщения может выполнить это действие.");
+        if (!originalFromId || (fromId !== originalFromId && fromId !== Environment.CREATOR_ID)) {
+            requirementLogger.debug("rejected.same_user", {title, chatId, fromId, originalFromId});
+            await notifyUser(Environment.onlyOriginalAuthorText);
             return false;
         }
     }
@@ -237,7 +261,7 @@ export async function executeChatCommand(cmd: Command | null, msg: Message, text
 
     if (!await checkRequirements(cmd, msg)) return false;
 
-    await cmd.execute(msg, cmd.regexp.exec(text));
+    await cmd.execute(msg, cmd.regexp?.exec(text));
     return true;
 }
 
@@ -247,7 +271,7 @@ export async function findAndExecuteCallbackCommand(commands: CallbackCommand[],
     const cmd = searchCallbackCommand(commands, data);
     if (!cmd) return false;
 
-    if (!await checkRequirements(cmd, null, query)) return false;
+    if (!await checkRequirements(cmd, undefined, query)) return false;
 
     await cmd.execute(query);
     await cmd.answerCallbackQuery(query);
@@ -266,31 +290,40 @@ export async function oldEditMessageText(chatId: number, messageId: number, mess
     });
 }
 
-export async function editMessageText(options: EditOptions) {
+export async function editMessageText(options: EditOptions, retries = 1) {
     if (options.text.trim().length === 0) return Promise.resolve(false);
 
     try {
-        const message = await bot.editMessageText({
-            chat_id: "message" in options ? options.message.chat.id : options.chat_id,
-            message_id: "message" in options ? options.message.message_id : options.message_id,
-            text: options.text,
-            parse_mode: options.parse_mode,
-            reply_markup: options.reply_markup,
-            link_preview_options: options.link_preview_options,
-        });
+        const chatId = "message" in options ? options.message.chat.id : options.chat_id;
+        const chatType = "message" in options ? options.message.chat.type : undefined;
+        const messageId = "message" in options ? options.message.message_id : options.message_id;
+        const message = await enqueueTelegramApiCall(
+            () => bot.editMessageText({
+                chat_id: chatId,
+                message_id: messageId,
+                text: options.text,
+                parse_mode: options.parse_mode,
+                reply_markup: options.reply_markup,
+                link_preview_options: options.link_preview_options,
+            }),
+            {
+                method: "editMessageText",
+                chatId,
+                chatType,
+            }
+        );
         return Promise.resolve(message);
-    } catch (e) {
-        logError(e);
+    } catch (error) {
+        logError(error instanceof Error ? error : String(error));
 
-        if (isMarkupFailed(e)) {
+        if (isMarkupFailed(error as Error | TelegramError)) {
             return Promise.resolve(true);
-        } else if (isTooManyRequests(e)) {
-            const delay = Number(e.message.split("retry after ")[1]) || 30;
-            setTimeout(() => {
-                return Promise.resolve();
-            }, delay * 1000);
+        } else if (isTooManyRequests(error as Error | TelegramError) && retries > 0) {
+            const retryAfter = Number((error instanceof Error ? error.message : String(error)).split("retry after ")[1]) || 30;
+            await delay(retryAfter * 1000);
+            return editMessageText(options, retries - 1);
         } else {
-            return Promise.reject(e);
+            return Promise.reject(error);
         }
     }
 }
@@ -304,13 +337,22 @@ export async function oldSendMessage(message: Message, text: string, parseMode?:
 }
 
 export async function sendMessage(options: SendOptions): Promise<Message> {
-    const response = await bot.sendMessage({
-        chat_id: "message" in options ? options.message.chat.id : options.chat_id,
-        text: options.text,
-        parse_mode: options.parse_mode,
-        link_preview_options: options.link_preview_options,
-        reply_markup: options.reply_markup,
-    });
+    const chatId = "message" in options ? options.message.chat.id : options.chat_id;
+    const chatType = "message" in options ? options.message.chat.type : undefined;
+    const response = await enqueueTelegramApiCall(
+        () => bot.sendMessage({
+            chat_id: chatId,
+            text: options.text,
+            parse_mode: options.parse_mode,
+            link_preview_options: options.link_preview_options,
+            reply_markup: options.reply_markup,
+        }),
+        {
+            method: "sendMessage",
+            chatId,
+            chatType,
+        }
+    );
 
     await MessageStore.put(response);
 
@@ -330,15 +372,25 @@ export async function replyToMessage(options: SendOptions): Promise<Message> {
         return Promise.reject("for reply there must be message or message_id");
     }
 
-    const response = await bot.sendMessage({
-        chat_id: "message" in options ? options.message.chat.id : options.chat_id,
-        text: options.text,
-        parse_mode: options.parse_mode,
-        reply_parameters: {
-            message_id: "message" in options ? options.message.message_id : options.message_id
-        },
-        link_preview_options: options.link_preview_options
-    });
+    const chatId = "message" in options ? options.message.chat.id : options.chat_id;
+    const chatType = "message" in options ? options.message.chat.type : undefined;
+    const response = await enqueueTelegramApiCall(
+        () => bot.sendMessage({
+            chat_id: chatId,
+            text: options.text,
+            parse_mode: options.parse_mode,
+            reply_parameters: {
+                message_id: <number>("message" in options ? options.message.message_id : options.message_id)
+            },
+            link_preview_options: options.link_preview_options,
+            reply_markup: options.reply_markup,
+        }),
+        {
+            method: "sendMessage",
+            chatId,
+            chatType,
+        }
+    );
 
     await MessageStore.put(response);
 
@@ -346,7 +398,7 @@ export async function replyToMessage(options: SendOptions): Promise<Message> {
 }
 
 export async function sendErrorPlaceholder(message: Message): Promise<Message> {
-    return await sendMessage({message: message, text: "Произошла ошибка ⚠️"}).catch(logError) as Message;
+    return await sendMessage({message: message, text: Environment.getErrorText()}).catch(logError) as Message;
 }
 
 export async function initSystemSpecs(): Promise<void> {
@@ -356,14 +408,13 @@ export async function initSystemSpecs(): Promise<void> {
 
         const ramSize = (mem.total / 1024 / 1024 / 1024).toFixed(2);
 
-        const text =
-            `OS: ${os.distro}\n` +
-            `RUNTIME: ${run.runtime} ${run.version}\n` +
-            `DOCKER: ${Environment.IS_DOCKER}\n` +
-            `CPU: ${cpu.manufacturer} ${cpu.brand} ${cpu.physicalCores} cores ${cpu.cores} threads\n` +
-            `RAM: ${ramSize} GB`;
-
-        SystemInfo.setSystemInfo(text);
+        SystemInfo.setSystemInfo({
+            os: os.distro,
+            runtime: `${run.runtime} ${run.version}`,
+            docker: Environment.IS_DOCKER,
+            cpu: `${cpu.manufacturer} ${cpu.brand} ${cpu.physicalCores} ${Environment.systemInfoCpuCoresText} ${cpu.cores} ${Environment.systemInfoCpuThreadsText}`,
+            ramGb: ramSize,
+        });
         return Promise.resolve();
     } catch (e) {
         return Promise.reject(e);
@@ -371,27 +422,41 @@ export async function initSystemSpecs(): Promise<void> {
 }
 
 export function getRandomInt(max: number) {
-    return Math.floor(Math.random() * Math.floor(max));
+    return RandomUtils.int(max);
 }
 
 export function getRangedRandomInt(from: number, to: number): number {
-    return getRandomInt(to - from) + from;
+    return RandomUtils.rangedInt(from, to);
 }
 
-export function randomValue<T>(list: T[]): T {
-    return list[Math.floor(Math.random() * list.length)];
+export function randomValue<T>(list: readonly T[]): T | undefined {
+    return RandomUtils.value(list);
 }
 
 export function chatCommandToString(cmd: Command): string {
-    if (!cmd.title && !cmd.description) {
+    const description = getLocalizedCommandDescription(cmd);
+
+    if (!cmd.title && !description) {
         return "";
     }
 
-    if (cmd.title && cmd.description) {
-        return `${cmd.title}: ${cmd.description}`;
+    if (cmd.title && description) {
+        return `${cmd.title}: ${description}`;
     }
 
-    return `${cmd.title ? `${cmd.title}: ` : ""}${cmd.description ? `${cmd.description}` : ""}`;
+    return `${cmd.title ? `${cmd.title}: ` : ""}${description ? `${description}` : ""}`;
+}
+
+function getLocalizedCommandDescription(cmd: Command): string | undefined {
+    if (!cmd.title) return cmd.description;
+
+    const entry = Object.entries(Environment.commandTitles)
+        .find(([, title]) => title === cmd.title);
+
+    if (!entry) return cmd.description;
+
+    const [key] = entry as [keyof typeof Environment.commandDescriptions, string];
+    return Environment.commandDescriptions[key] ?? cmd.description;
 }
 
 export function fullName(from: User | StoredUser): string {
@@ -418,10 +483,10 @@ export function getUptime(): string {
     const processMinutes = Math.floor((processUptime % 3600) / 60);
     const processSeconds = Math.floor(processUptime % 60);
 
-    const processUptimeText = `${processDays > 0 ? `${processDays} д. ` : ""}` +
-        `${processHours > 0 ? `${processHours} ч. ` : ""}` +
-        `${processMinutes > 0 ? `${processMinutes} м. ` : ""}` +
-        `${processSeconds > 0 ? `${processSeconds} с.` : ""}`;
+    const processUptimeText = `${processDays > 0 ? `${processDays} d ` : ""}` +
+        `${processHours > 0 ? `${processHours} h ` : ""}` +
+        `${processMinutes > 0 ? `${processMinutes} m ` : ""}` +
+        `${processSeconds > 0 ? `${processSeconds} s` : ""}`;
 
     const osUptime = Math.ceil(os.uptime());
 
@@ -430,12 +495,12 @@ export function getUptime(): string {
     const osMinutes = Math.floor((osUptime % 3600) / 60);
     const osSeconds = Math.floor(osUptime % 60);
 
-    const osUptimeText = `${osDays > 0 ? `${osDays} д. ` : ""}` +
-        `${osHours > 0 ? `${osHours} ч. ` : ""}` +
-        `${osMinutes > 0 ? `${osMinutes} м. ` : ""}` +
-        `${osSeconds > 0 ? `${osSeconds} с.` : ""}`;
+    const osUptimeText = `${osDays > 0 ? `${osDays} d ` : ""}` +
+        `${osHours > 0 ? `${osHours} h ` : ""}` +
+        `${osMinutes > 0 ? `${osMinutes} m ` : ""}` +
+        `${osSeconds > 0 ? `${osSeconds} s` : ""}`;
 
-    return `${Environment.IS_DOCKER ? "Docker контейнер" : "Процесс"}:\n${processUptimeText}\n\nСистема:\n${osUptimeText}`;
+    return Environment.getUptimeText(processUptimeText, osUptimeText);
 }
 
 export const delay = (ms: number, signal?: AbortSignal): Promise<void> =>
@@ -445,11 +510,25 @@ export const delay = (ms: number, signal?: AbortSignal): Promise<void> =>
             return;
         }
 
-        const id = setTimeout(resolve, ms);
+        let onAbort: (() => void) | undefined;
+        let id: NodeJS.Timeout;
+
+        const cleanup = () => {
+            clearTimeout(id);
+            if (onAbort) {
+                signal?.removeEventListener("abort", onAbort);
+                onAbort = undefined;
+            }
+        };
+
+        id = setTimeout(() => {
+            cleanup();
+            resolve();
+        }, ms);
 
         if (signal) {
-            const onAbort = () => {
-                clearTimeout(id);
+            onAbort = () => {
+                cleanup();
                 reject(new DOMException("Aborted", "AbortError"));
             };
             signal.addEventListener("abort", onAbort, {once: true});
@@ -458,227 +537,687 @@ export const delay = (ms: number, signal?: AbortSignal): Promise<void> =>
 
 const MARKDOWN_V2_RESERVED_RE = /([\\_*\[\]()~`>#+\-=|{}.!])/g;
 
-function escapePlainMarkdownV2(s: string): string {
+// const TOKEN_PREFIX = "\uE000TG_MD_V2_";
+// const TOKEN_SUFFIX = "\uE001";
+// const TOKEN_RE = /\uE000TG_MD_V2_(\d+)\uE001/g;
+
+// type TokenHit = {
+//     key: string;
+//     end: number;
+// };
+
+// type InlineStyleKind =
+//     | "bold"
+//     | "italic"
+//     | "underline"
+//     | "strikethrough"
+//     | "spoiler";
+
+// type InlineStyle = {
+//     inputDelimiter: string;
+//     outputDelimiter: string;
+//     kind: InlineStyleKind;
+// };
+
+// class TelegramMarkdownV2TokenStore {
+//     private readonly tokens: string[] = [];
+//
+//     add(value: string): string {
+//         const key = `${TOKEN_PREFIX}${this.tokens.length}${TOKEN_SUFFIX}`;
+//         this.tokens.push(value);
+//         return key;
+//     }
+//
+//     readAt(s: string, index: number): TokenHit | null {
+//         if (!s.startsWith(TOKEN_PREFIX, index)) {
+//             return null;
+//         }
+//
+//         const idStart = index + TOKEN_PREFIX.length;
+//         const idEnd = s.indexOf(TOKEN_SUFFIX, idStart);
+//
+//         if (idEnd === -1) {
+//             return null;
+//         }
+//
+//         const rawId = s.slice(idStart, idEnd);
+//
+//         if (!/^\d+$/.test(rawId)) {
+//             return null;
+//         }
+//
+//         return {
+//             key: s.slice(index, idEnd + TOKEN_SUFFIX.length),
+//             end: idEnd + TOKEN_SUFFIX.length,
+//         };
+//     }
+//
+//     restore(s: string): string {
+//         return s.replace(TOKEN_RE, (match, rawId) => {
+//             return this.tokens[Number(rawId)] ?? match;
+//         });
+//     }
+// }
+
+export function escapePlainMarkdownV2(s: string): string {
     return s.replace(MARKDOWN_V2_RESERVED_RE, "\\$1");
 }
 
-function escapeCodeMarkdownV2(s: string): string {
+export function escapeCodeMarkdownV2(s: string): string {
     return s.replace(/[\\`]/g, "\\$&");
 }
 
-function escapeLinkUrlMarkdownV2(s: string): string {
+export function buildCancelledGenerationText(baseText: string, provider: string, limit: number = 4096): string {
+    const cancellationBlock = `\`\`\`${Environment.getCancelledText(provider)}\n\`\`\``;
+    const separator = "\n\n";
+    const trimmedBase = baseText.trim();
+
+    // Return regular Markdown, not already escaped MarkdownV2.
+    // Final escaping must happen exactly once right before sending to Telegram.
+    if (!trimmedBase.length) {
+        return cancellationBlock;
+    }
+
+    const fullText = `${trimmedBase}${separator}${cancellationBlock}`;
+    if (fullText.length <= limit) {
+        return fullText;
+    }
+
+    const maxBaseLength = Math.max(0, limit - cancellationBlock.length - separator.length - 3);
+    const truncatedBase = trimmedBase.slice(0, maxBaseLength).trimEnd();
+
+    return `${truncatedBase}...${separator}${cancellationBlock}`;
+}
+
+
+export function escapeLinkUrlMarkdownV2(s: string): string {
     return s.replace(/[\\)]/g, "\\$&");
 }
 
-function escapeMarkdownV2PreservingAllowedFormatting(s: string): string {
-    let result = "";
-    let i = 0;
+// function normalizeLineEndings(s: string): string {
+//     return s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+// }
 
-    while (i < s.length) {
-        // links: [text](url)
-        if (s[i] === "[") {
-            const linkMatch = s.slice(i).match(/^\[([^\]\n]+)]\(([^)\n]+)\)/);
+// function stripOneOuterNewline(s: string): string {
+//     return s.replace(/^\n/, "").replace(/\n$/, "");
+// }
 
-            if (linkMatch) {
-                const [, text, url] = linkMatch;
-                result += `[${escapePlainMarkdownV2(text)}](${escapeLinkUrlMarkdownV2(url)})`;
-                i += linkMatch[0].length;
-                continue;
-            }
-        }
+// function normalizeCodeLanguage(lang: string | undefined): string {
+//     const trimmed = lang?.trim() ?? "";
+//     return /^[a-zA-Z0-9_-]+$/.test(trimmed) ? trimmed : "";
+// }
 
-        // monospace: `text`
-        if (s[i] === "`") {
-            const end = s.indexOf("`", i + 1);
+// function renderCodeBlockMarkdownV2(code: string, lang?: string): string {
+//     const safeLang = normalizeCodeLanguage(lang);
+//     const safeCode = escapeCodeMarkdownV2(stripOneOuterNewline(code));
+//     return "```" + safeLang + "\n" + safeCode + "\n```";
+// }
 
-            if (end !== -1) {
-                const content = s.slice(i + 1, end);
-                result += "`" + escapeCodeMarkdownV2(content) + "`";
-                i = end + 1;
-                continue;
-            }
-        }
+// function renderInlineCodeMarkdownV2(code: string): string {
+//     return "`" + escapeCodeMarkdownV2(code) + "`";
+// }
 
-        // spoiler: ||text||
-        if (s.startsWith("||", i)) {
-            const end = s.indexOf("||", i + 2);
+// function protectFencedCodeBlocks(
+//     s: string,
+//     store: TelegramMarkdownV2TokenStore,
+// ): string {
+//     return s.replace(/```([a-zA-Z0-9_-]*)[^\S\n]*\n?([\s\S]*?)```/g, (_full, lang: string, code: string) => {
+//         return store.add(renderCodeBlockMarkdownV2(code, lang));
+//     });
+// }
 
-            if (end !== -1) {
-                const content = s.slice(i + 2, end);
-                result += "||" + escapeMarkdownV2PreservingAllowedFormatting(content) + "||";
-                i = end + 2;
-                continue;
-            }
-        }
+// function findClosingSquareBracket(s: string, from: number): number {
+//     for (let i = from; i < s.length; i++) {
+//         if (s[i] === "\\") {
+//             i++;
+//             continue;
+//         }
+//
+//         if (s[i] === "\n") {
+//             return -1;
+//         }
+//
+//         if (s[i] === "]") {
+//             return i;
+//         }
+//     }
+//
+//     return -1;
+// }
 
-        // underline: __text__
-        if (s.startsWith("__", i)) {
-            const end = s.indexOf("__", i + 2);
+// function findClosingParen(s: string, from: number): number {
+//     let depth = 1;
+//
+//     for (let i = from; i < s.length; i++) {
+//         const ch = s[i];
+//
+//         if (ch === "\\") {
+//             i++;
+//             continue;
+//         }
+//
+//         if (ch === "\n") {
+//             return -1;
+//         }
+//
+//         if (ch === "(") {
+//             depth++;
+//             continue;
+//         }
+//
+//         if (ch === ")") {
+//             depth--;
+//
+//             if (depth === 0) {
+//                 return i;
+//             }
+//         }
+//     }
+//
+//     return -1;
+// }
 
-            if (end !== -1) {
-                const content = s.slice(i + 2, end);
-                result += "__" + escapeMarkdownV2PreservingAllowedFormatting(content) + "__";
-                i = end + 2;
-                continue;
-            }
-        }
+// function parseBracketParen(
+//     s: string,
+//     openBracketIndex: number,
+// ): { label: string; url: string; end: number } | null {
+//     if (s[openBracketIndex] !== "[") {
+//         return null;
+//     }
+//
+//     const closeBracket = findClosingSquareBracket(s, openBracketIndex + 1);
+//
+//     if (closeBracket === -1 || s[closeBracket + 1] !== "(") {
+//         return null;
+//     }
+//
+//     const closeParen = findClosingParen(s, closeBracket + 2);
+//
+//     if (closeParen === -1) {
+//         return null;
+//     }
+//
+//     return {
+//         label: s.slice(openBracketIndex + 1, closeBracket),
+//         url: s.slice(closeBracket + 2, closeParen),
+//         end: closeParen + 1,
+//     };
+// }
 
-        // bold: *text*
-        if (s[i] === "*") {
-            const end = s.indexOf("*", i + 1);
+// function unescapeMarkdownLabel(s: string): string {
+//     return s.replace(/\\([\\\[\]])/g, "$1");
+// }
 
-            if (end !== -1) {
-                const content = s.slice(i + 1, end);
-                result += "*" + escapeMarkdownV2PreservingAllowedFormatting(content) + "*";
-                i = end + 1;
-                continue;
-            }
-        }
+// function unescapeMarkdownUrl(s: string): string {
+//     return s.replace(/\\([\\)])/g, "$1");
+// }
 
-        // italic: _text_
-        if (s[i] === "_") {
-            const end = s.indexOf("_", i + 1);
+// function parseQueryParam(query: string, key: string): string | undefined {
+//     for (const part of query.split("&")) {
+//         const eq = part.indexOf("=");
+//
+//         if (eq === -1) {
+//             if (part === key) {
+//                 return "";
+//             }
+//
+//             continue;
+//         }
+//
+//         const paramKey = part.slice(0, eq);
+//         const paramValue = part.slice(eq + 1);
+//
+//         if (paramKey === key) {
+//             return paramValue;
+//         }
+//     }
+//
+//     return undefined;
+// }
 
-            if (end !== -1) {
-                const content = s.slice(i + 1, end);
-                result += "_" + escapeMarkdownV2PreservingAllowedFormatting(content) + "_";
-                i = end + 1;
-                continue;
-            }
-        }
+// export function isValidTelegramDateTimeFormat(format: string): boolean {
+//     return /^(?:r|w?[dD]?[tT]?)$/.test(format);
+// }
 
-        // strikethrough: ~text~
-        if (s[i] === "~") {
-            const end = s.indexOf("~", i + 1);
+// function isValidTelegramTimeUrl(url: string): boolean {
+//     const match = /^tg:\/\/time\?(.+)$/i.exec(url.trim());
+//
+//     if (!match) {
+//         return false;
+//     }
+//
+//     const query = match[1];
+//     const unix = parseQueryParam(query, "unix");
+//     const format = parseQueryParam(query, "format");
+//
+//     if (!unix || !/^-?\d+$/.test(unix)) {
+//         return false;
+//     }
+//
+//     return format === undefined || isValidTelegramDateTimeFormat(format);
+// }
 
-            if (end !== -1) {
-                const content = s.slice(i + 1, end);
-                result += "~" + escapeMarkdownV2PreservingAllowedFormatting(content) + "~";
-                i = end + 1;
-                continue;
-            }
-        }
+// function isValidTelegramEmojiUrl(url: string): boolean {
+//     return /^tg:\/\/emoji\?id=\d+$/i.test(url.trim());
+// }
 
-        result += escapePlainMarkdownV2(s[i]);
-        i++;
-    }
+// function isTelegramSpecialEntityUrl(url: string): boolean {
+//     return isValidTelegramEmojiUrl(url) || isValidTelegramTimeUrl(url);
+// }
 
-    return result;
-}
+// function renderTelegramSpecialEntityMarkdownV2(label: string, url: string): string {
+//     return `![${escapePlainMarkdownV2(label)}](${escapeLinkUrlMarkdownV2(url)})`;
+// }
 
-function unescapeAccidentalMarkdownV2(s: string): string {
-    let prev: string;
+// function renderInlineLinkMarkdownV2(label: string, url: string): string {
+//     const safeLabel = label.trim().length > 0 ? label : url;
+//     return `[${escapePlainMarkdownV2(safeLabel)}](${escapeLinkUrlMarkdownV2(url)})`;
+// }
 
-    do {
-        prev = s;
-        s = s.replace(/\\([_*\[\]()~`>#+\-=|{}.!\\])/g, "$1");
-    } while (s !== prev);
+// function findInlineCodeEnd(s: string, from: number): number {
+//     for (let i = from; i < s.length; i++) {
+//         if (s[i] === "\n") {
+//             return -1;
+//         }
+//
+//         if (s[i] === "`") {
+//             return i;
+//         }
+//     }
+//
+//     return -1;
+// }
 
-    return s;
-}
+// function protectInlineEntities(
+//     s: string,
+//     store: TelegramMarkdownV2TokenStore,
+// ): string {
+//     let result = "";
+//     let i = 0;
+//
+//     while (i < s.length) {
+//         const token = store.readAt(s, i);
+//
+//         if (token) {
+//             result += token.key;
+//             i = token.end;
+//             continue;
+//         }
+//
+//         if (s.startsWith("![", i)) {
+//             const parsed = parseBracketParen(s, i + 1);
+//
+//             if (parsed) {
+//                 const label = unescapeMarkdownLabel(parsed.label);
+//                 const url = unescapeMarkdownUrl(parsed.url.trim());
+//
+//                 if (isTelegramSpecialEntityUrl(url)) {
+//                     result += store.add(renderTelegramSpecialEntityMarkdownV2(label, url));
+//                 } else {
+//                     result += label.trim().length > 0 ? `${label}: ${url}` : url;
+//                 }
+//
+//                 i = parsed.end;
+//                 continue;
+//             }
+//         }
+//
+//         if (s[i] === "[") {
+//             const parsed = parseBracketParen(s, i);
+//
+//             if (parsed) {
+//                 const label = unescapeMarkdownLabel(parsed.label);
+//                 const url = unescapeMarkdownUrl(parsed.url.trim());
+//
+//                 if (url.length > 0) {
+//                     result += store.add(renderInlineLinkMarkdownV2(label, url));
+//                     i = parsed.end;
+//                     continue;
+//                 }
+//             }
+//         }
+//
+//         if (s[i] === "`") {
+//             const end = findInlineCodeEnd(s, i + 1);
+//
+//             if (end !== -1) {
+//                 result += store.add(renderInlineCodeMarkdownV2(s.slice(i + 1, end)));
+//                 i = end + 1;
+//                 continue;
+//             }
+//         }
+//
+//         result += s[i];
+//         i++;
+//     }
+//
+//     return result;
+// }
 
-function escapeTelegramQuoteLine(line: string): string {
-    const content = line.replace(/^>\s*/, "");
+// function isMarkdownTableSeparator(line: string): boolean {
+//     return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
+// }
 
-    if (!content.trim()) {
-        return ">";
-    }
+// function looksLikeMarkdownTableRow(line: string): boolean {
+//     const trimmed = line.trim();
+//
+//     if (!trimmed.includes("|")) {
+//         return false;
+//     }
+//
+//     return !(trimmed.startsWith("||") && trimmed.endsWith("||"));
+// }
 
-    return ">" + escapeMarkdownV2PreservingAllowedFormatting(content);
-}
+// function splitMarkdownTableRow(line: string): string[] {
+//     const normalized = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+//     const cells: string[] = [];
+//     let current = "";
+//
+//     for (let i = 0; i < normalized.length; i++) {
+//         const ch = normalized[i];
+//
+//         if (ch === "\\") {
+//             current += ch;
+//
+//             if (i + 1 < normalized.length) {
+//                 current += normalized[i + 1];
+//                 i++;
+//             }
+//
+//             continue;
+//         }
+//
+//         if (ch === "|") {
+//             cells.push(current.trim());
+//             current = "";
+//             continue;
+//         }
+//
+//         current += ch;
+//     }
+//
+//     cells.push(current.trim());
+//     return cells.filter(Boolean);
+// }
 
-function normalizeTelegramQuoteLines(s: string): string {
-    return s
-        .split("\n")
-        .map(line => {
-            if (!line.startsWith(">")) return line;
+// function normalizeMarkdownTables(s: string): string {
+//     const lines = s.split("\n");
+//     const result: string[] = [];
+//     let i = 0;
+//
+//     while (i < lines.length) {
+//         const current = lines[i];
+//         const next = lines[i + 1];
+//
+//         if (
+//             next !== undefined &&
+//             looksLikeMarkdownTableRow(current) &&
+//             isMarkdownTableSeparator(next)
+//         ) {
+//             const tableRows = [current];
+//             i += 2;
+//
+//             while (
+//                 i < lines.length &&
+//                 looksLikeMarkdownTableRow(lines[i]) &&
+//                 !isMarkdownTableSeparator(lines[i])
+//                 ) {
+//                 tableRows.push(lines[i]);
+//                 i++;
+//             }
+//
+//             for (const row of tableRows) {
+//                 const cells = splitMarkdownTableRow(row);
+//
+//                 if (cells.length > 0) {
+//                     result.push(cells.join(" — "));
+//                 }
+//             }
+//
+//             continue;
+//         }
+//
+//         result.push(current);
+//         i++;
+//     }
+//
+//     return result.join("\n");
+// }
 
-            return line.replace(/^>\s+/, ">");
-        })
-        .join("\n");
-}
+// function normalizeUnsupportedMarkdownLine(line: string): string {
+//     const headingMatch = /^\s*#{1,6}\s+(.+?)\s*#*\s*$/.exec(line);
+//
+//     if (headingMatch) {
+//         return `*${headingMatch[1].trim()}*`;
+//     }
+//
+//     if (/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(line)) {
+//         return "— — —";
+//     }
+//
+//     line = line.replace(/^(\s*)[-*+]\s+\[\s]\s+(?=\S)/i, "$1☐ ");
+//     line = line.replace(/^(\s*)[-*+]\s+\[[xX]]\s+(?=\S)/, "$1☑ ");
+//     line = line.replace(/^(\s*)[-*+]\s+(?=\S)/, "$1• ");
+//     line = line.replace(/^(\s*)(\d+)[.)]\s+(?=\S)/, "$1$2) ");
+//
+//     return line;
+// }
 
-function looksLikeMarkdownTableRow(line: string): boolean {
-    const trimmed = line.trim();
+// function normalizeUnsupportedMarkdown(s: string): string {
+//     return normalizeMarkdownTables(s)
+//         .split("\n")
+//         .map(normalizeUnsupportedMarkdownLine)
+//         .join("\n");
+// }
 
-    if (trimmed.startsWith("||") && trimmed.endsWith("||")) {
-        return false;
-    }
+// function isWhitespace(ch: string | undefined): boolean {
+//     return ch !== undefined && /\s/.test(ch);
+// }
 
-    const pipeCount = (trimmed.match(/\|/g) ?? []).length;
+// function isWordChar(ch: string | undefined): boolean {
+//     return ch !== undefined && /[\p{L}\p{N}]/u.test(ch);
+// }
 
-    if (pipeCount < 2) {
-        return false;
-    }
+// function canOpenDelimiter(
+//     s: string,
+//     index: number,
+//     delimiter: string,
+//     kind: InlineStyleKind,
+// ): boolean {
+//     const before = s[index - 1];
+//     const after = s[index + delimiter.length];
+//
+//     if (after === undefined || isWhitespace(after)) {
+//         return false;
+//     }
+//
+//     return !((kind === "bold" || kind === "italic" || kind === "strikethrough") &&
+//         isWordChar(before) &&
+//         isWordChar(after));
+// }
 
-    return trimmed.startsWith("|") || trimmed.endsWith("|") || pipeCount >= 2;
-}
+// function canCloseDelimiter(
+//     s: string,
+//     index: number,
+//     delimiter: string,
+//     kind: InlineStyleKind,
+// ): boolean {
+//     const before = s[index - 1];
+//     const after = s[index + delimiter.length];
+//
+//     if (before === undefined || isWhitespace(before)) {
+//         return false;
+//     }
+//
+//     return !((kind === "bold" || kind === "italic" || kind === "strikethrough") &&
+//         isWordChar(before) &&
+//         isWordChar(after));
+// }
 
-function isMarkdownTableSeparator(line: string): boolean {
-    return /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
-}
+// function findClosingDelimiter(
+//     s: string,
+//     delimiter: string,
+//     from: number,
+//     kind: InlineStyleKind,
+//     store: TelegramMarkdownV2TokenStore,
+// ): number {
+//     for (let i = from; i < s.length; i++) {
+//         const token = store.readAt(s, i);
+//
+//         if (token) {
+//             i = token.end - 1;
+//             continue;
+//         }
+//
+//         if (s[i] === "\\") {
+//             i++;
+//             continue;
+//         }
+//
+//         if (s.startsWith(delimiter, i) && canCloseDelimiter(s, i, delimiter, kind)) {
+//             return i;
+//         }
+//     }
+//
+//     return -1;
+// }
 
-function normalizeMarkdownTables(s: string): string {
-    return s
-        .split("\n")
-        .filter(line => !isMarkdownTableSeparator(line))
-        .map(line => {
-            if (!looksLikeMarkdownTableRow(line)) {
-                return line;
-            }
+// function formatInlineMarkdownV2(
+//     s: string,
+//     store: TelegramMarkdownV2TokenStore,
+// ): string {
+//     const styles: InlineStyle[] = [
+//         {inputDelimiter: "||", outputDelimiter: "||", kind: "spoiler"},
+//         {inputDelimiter: "__", outputDelimiter: "__", kind: "underline"},
+//         {inputDelimiter: "**", outputDelimiter: "*", kind: "bold"},
+//         {inputDelimiter: "~~", outputDelimiter: "~", kind: "strikethrough"},
+//         {inputDelimiter: "*", outputDelimiter: "*", kind: "bold"},
+//         {inputDelimiter: "_", outputDelimiter: "_", kind: "italic"},
+//         {inputDelimiter: "~", outputDelimiter: "~", kind: "strikethrough"},
+//     ];
+//
+//     let result = "";
+//     let i = 0;
+//
+//     while (i < s.length) {
+//         const token = store.readAt(s, i);
+//
+//         if (token) {
+//             result += token.key;
+//             i = token.end;
+//             continue;
+//         }
+//
+//         if (s[i] === "\\" && i + 1 < s.length) {
+//             result += escapePlainMarkdownV2(s[i + 1]);
+//             i += 2;
+//             continue;
+//         }
+//
+//         let handled = false;
+//
+//         for (const style of styles) {
+//             const delimiter = style.inputDelimiter;
+//
+//             if (!s.startsWith(delimiter, i)) {
+//                 continue;
+//             }
+//
+//             if (!canOpenDelimiter(s, i, delimiter, style.kind)) {
+//                 continue;
+//             }
+//
+//             const end = findClosingDelimiter(
+//                 s,
+//                 delimiter,
+//                 i + delimiter.length,
+//                 style.kind,
+//                 store,
+//             );
+//
+//             if (end === -1) {
+//                 continue;
+//             }
+//
+//             const content = s.slice(i + delimiter.length, end);
+//
+//             if (content.length === 0) {
+//                 continue;
+//             }
+//
+//             result +=
+//                 style.outputDelimiter +
+//                 formatInlineMarkdownV2(content, store) +
+//                 style.outputDelimiter;
+//
+//             i = end + delimiter.length;
+//             handled = true;
+//             break;
+//         }
+//
+//         if (handled) {
+//             continue;
+//         }
+//
+//         result += escapePlainMarkdownV2(s[i]);
+//         i++;
+//     }
+//
+//     return result;
+// }
 
-            return line
-                .replace(/^\s*\|/, "")
-                .replace(/\|\s*$/, "")
-                .split("|")
-                .map(cell => cell.trim())
-                .filter(Boolean)
-                .join(" — ");
-        })
-        .join("\n");
-}
+// function renderMarkdownV2Line(
+//     line: string,
+//     store: TelegramMarkdownV2TokenStore,
+// ): string {
+//     if (line.startsWith("**>")) {
+//         let content = line.slice(3).replace(/^\s?/, "");
+//         const isExpandableEnd = content.endsWith("||");
+//
+//         if (isExpandableEnd) {
+//             content = content.slice(0, -2);
+//         }
+//
+//         return `**>${formatInlineMarkdownV2(content, store)}${isExpandableEnd ? "||" : ""}`;
+//     }
+//
+//     if (line.startsWith(">")) {
+//         const content = line.slice(1).replace(/^\s?/, "");
+//
+//         if (!content.trim()) {
+//             return ">";
+//         }
+//
+//         return ">" + formatInlineMarkdownV2(content, store);
+//     }
+//
+//     return formatInlineMarkdownV2(line, store);
+// }
 
-export function escapeMarkdownV2Text(s: string): string {
-    s = unescapeAccidentalMarkdownV2(s);
-    s = normalizeTelegramQuoteLines(s);
+// function renderMarkdownV2(
+//     s: string,
+//     store: TelegramMarkdownV2TokenStore,
+// ): string {
+//     return s
+//         .split("\n")
+//         .map(line => renderMarkdownV2Line(line, store))
+//         .join("\n");
+// }
 
-    s = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-
-    s = s.replace(/^\s*[-*_]{3,}\s*$/gm, "— — —");
-    s = s.replace(/^\s*[-*+]\s+(?=\S)/gm, "• ");
-    s = s.replace(/\*\*(.+?)\*\*/gs, "*$1*");
-    s = s.replace(/~~(.+?)~~/gs, "~$1~");
-    s = s.replace(/^#{1,6}\s+/gm, "");
-
-    s = s.replace(/```[a-zA-Z0-9_-]*\n?([\s\S]*?)```/g, (_, code) => {
-        return code.trim();
-    });
-
-    s = s.replace(/!\[([^\]]*)]\(([^)]+)\)/g, (_, alt, url) => {
-        return alt ? `${alt}: ${url}` : url;
-    });
-
-    s = normalizeMarkdownTables(s);
-
-    s = s
-        .split("\n")
-        .map(line => {
-            if (line.startsWith(">")) {
-                return escapeTelegramQuoteLine(line);
-            }
-
-            if (line === ">") {
-                return ">";
-            }
-
-            return escapeMarkdownV2PreservingAllowedFormatting(line);
-        })
-        .join("\n");
-
-    s = s.replace(/\n{3,}/g, "\n\n");
-
-    return s.trim();
-}
+// export function escapeMarkdownV2Text(input: string): string {
+//     const store = new TelegramMarkdownV2TokenStore();
+//
+//     let s = normalizeLineEndings(input);
+//
+//     s = protectFencedCodeBlocks(s, store);
+//     s = protectInlineEntities(s, store);
+//     s = normalizeUnsupportedMarkdown(s);
+//     s = renderMarkdownV2(s, store);
+//     s = s.replace(/\n{3,}/g, "\n\n").trim();
+//     s = store.restore(s);
+//
+//     return s.trim();
+// }
 
 export async function getFileUrl(fileId: string): Promise<string> {
     const file = await bot.getFile({file_id: fileId});
@@ -709,19 +1248,30 @@ export async function getUserAvatar(userId: number): Promise<Buffer | null> {
     return Buffer.from(res.data);
 }
 
+export function extractMessageQuote(msg: Message | StoredMessage | null | undefined): string | undefined | null {
+    if (!msg) return null;
+
+    return isStoredMessage(msg) ? msg.quoteText : msg.quote?.text;
+}
+
 export function extractTextMessage(msg: Message | StoredMessage | string): string | null {
     if (!msg) return null;
     if (typeof msg === "string") return msg;
 
-    const text = (isStoredMessage(msg) ? msg.text : msg.text || msg.caption || "").trim();
-    if (text.length === 0) return null;
+    const text = (isStoredMessage(msg) ? msg.text : msg.text || msg.caption || "")?.trim();
+    if (!text || !text?.length) return null;
     return text;
 }
 
-export function cutPrefixes(msg: Message | StoredMessage | string): string {
+export function escapeHtml(input: string): string {
+    return HtmlUtils.escape(input);
+}
+
+export function cutPrefixes(msg: Message | StoredMessage | string | null): string | null {
+    if (!msg) return null;
     const chatCommands = commands.filter(c => c instanceof ChatCommand);
 
-    const prefixes = [Environment.BOT_PREFIX];
+    const prefixes = Environment.BOT_PREFIX ? [Environment.BOT_PREFIX] : [];
     const pushPrefix = (c: string) => {
         prefixes.push(`/${c}@${botUser.username}`);
         prefixes.push(`/${c}`);
@@ -729,10 +1279,12 @@ export function cutPrefixes(msg: Message | StoredMessage | string): string {
 
     chatCommands.forEach((cmd) => {
         const command = cmd.command;
-        if (Array.isArray(command)) {
-            command.forEach(pushPrefix);
-        } else {
-            pushPrefix(command);
+        if (command) {
+            if (Array.isArray(command)) {
+                command.forEach(pushPrefix);
+            } else {
+                pushPrefix(command);
+            }
         }
     });
 
@@ -751,39 +1303,98 @@ export function cutPrefixes(msg: Message | StoredMessage | string): string {
     return newText;
 }
 
-export function isStoredMessage(msg: Message | StoredMessage): msg is StoredMessage {
-    return "id" in msg;
+export function isStoredMessage(msg: Message | StoredMessage | null): msg is StoredMessage {
+    return !!msg && "id" in msg;
 }
 
-export async function loadImagesIfExists(msg: Message | StoredMessage): Promise<string[] | null> {
+function mimeTypeFromImagePath(filePath: string, fallback = "image/jpeg"): string {
+    switch (path.extname(filePath).toLowerCase()) {
+        case ".jpg":
+        case ".jpeg":
+            return "image/jpeg";
+        case ".png":
+            return "image/png";
+        case ".webp":
+            return "image/webp";
+        case ".gif":
+            return "image/gif";
+        default:
+            return fallback;
+    }
+}
+
+function mimeTypeFromImageAttachment(attachment: StoredAttachment): string {
+    const mimeType = attachment.mimeType?.toLowerCase();
+    if (mimeType?.startsWith("image/")) return mimeType;
+    return mimeTypeFromImagePath(attachment.cachePath);
+}
+
+function mimeTypeFromAudioPath(filePath: string, fallback = "audio/wav"): string {
+    switch (path.extname(filePath).toLowerCase()) {
+        case ".mp3":
+            return "audio/mpeg";
+        case ".m4a":
+            return "audio/m4a";
+        case ".ogg":
+        case ".oga":
+            return "audio/ogg";
+        case ".opus":
+            return "audio/opus";
+        case ".flac":
+            return "audio/flac";
+        case ".aac":
+            return "audio/aac";
+        case ".wav":
+            return "audio/wav";
+        default:
+            return fallback;
+    }
+}
+
+function mimeTypeFromAudioDownload(download: AiDownloadedFile): string {
+    const mimeType = download.mimeType?.toLowerCase();
+    if (mimeType?.startsWith("audio/")) return mimeType;
+    return mimeTypeFromAudioPath(download.path);
+}
+
+export async function loadImagesIfExists(msg: Message | StoredMessage): Promise<string[] | null | undefined> {
     if (isStoredMessage(msg)) {
-        return msg.photoMaxSizeFilePath;
+        return msg.attachments
+            ?.filter(attachment => attachment.kind === "image")
+            .map(attachment => attachment.fileUniqueId || path.basename(attachment.cachePath, path.extname(attachment.cachePath)));
     }
 
     if (!msg.photo?.length) return;
 
     const imageFilePaths: string[] = [];
 
-    for (const size of msg.photo) {
-        const exists = fs.existsSync(photoPathByUniqueId(size.file_unique_id));
-        if (exists) {
-            return [size.file_unique_id];
-        }
+    const maxSize = getPhotoMaxSize(msg.photo);
+    if (!maxSize) return [];
+
+    const exists = fs.existsSync(photoPathByUniqueId(maxSize.file_unique_id));
+    if (exists) {
+        return [maxSize.file_unique_id];
     }
 
-    const maxSize = await mapPhotoSizeToMax(getPhotoMaxSize(msg.photo));
-    if (maxSize) {
-        let imageFilePath = path.join(photoDir, maxSize.unique_file_id + ".jpg");
+    const photoMaxSize = await mapPhotoSizeToMax(maxSize);
+    if (photoMaxSize) {
+        let imageFilePath: string | null = photoPathByUniqueId(maxSize.file_unique_id);
         if (!fs.existsSync(imageFilePath)) {
-            const res = await axios.get<ArrayBuffer>(maxSize.url, {responseType: "arraybuffer"});
-            const src = Buffer.from(res.data);
+            await fileWriteLocks.runExclusive(imageFilePath, async () => {
+                if (fs.existsSync(imageFilePath!)) return;
 
-            try {
-                fs.writeFileSync(imageFilePath, src);
-            } catch (e) {
-                logError(e);
-                imageFilePath = null;
-            }
+                const res = await axios.get<ArrayBuffer>(photoMaxSize.url, {responseType: "arraybuffer"});
+                const src = Buffer.from(res.data);
+
+                try {
+                    const tempPath = `${imageFilePath}.${process.pid}.${Date.now()}.tmp`;
+                    fs.writeFileSync(tempPath, src);
+                    fs.renameSync(tempPath, imageFilePath!);
+                } catch (e) {
+                    logError(e instanceof Error ? e : String(e));
+                    imageFilePath = null;
+                }
+            });
         }
 
         if (imageFilePath) {
@@ -804,62 +1415,177 @@ export async function loadImagesFromFileIds(sizes: PhotoSize[]): Promise<string[
     const promises = sizes.filter(s => !fs.existsSync(photoPathByUniqueId(s.file_unique_id)))
         .map(s => mapPhotoSizeToMax(s));
 
-    const maxSizes = await Promise.all(promises);
+    const maxSizes = (await Promise.all(promises)).filter(e => !!e);
 
     const imagePromises = maxSizes.map((size) => {
         return axios.get<ArrayBuffer>(size.url, {responseType: "arraybuffer"});
     });
 
     const responses = await Promise.all(imagePromises);
-    const paths = responses.map((res, index) => {
+    const paths = await Promise.all(responses.map((res, index) => {
         try {
             const uniqueFileId = maxSizes[index].unique_file_id;
             const imageFilePath = path.join(photoDir, uniqueFileId + ".jpg");
             const src = Buffer.from(res.data);
-            fs.writeFileSync(imageFilePath, src);
-            return uniqueFileId;
+            return fileWriteLocks.runExclusive(imageFilePath, async () => {
+                if (!fs.existsSync(imageFilePath)) {
+                    const tempPath = `${imageFilePath}.${process.pid}.${Date.now()}.tmp`;
+                    fs.writeFileSync(tempPath, src);
+                    fs.renameSync(tempPath, imageFilePath);
+                }
+                return uniqueFileId;
+            });
         } catch (e) {
-            logError(e);
+            logError(e instanceof Error ? e : String(e));
             return null;
         }
-    });
-    const finalPaths = paths.filter(p => p);
-    finalPaths.unshift(...existing);
+    }));
+    const finalPaths = existing.concat(...paths.filter(p => !!p).map(p => <string>p));
     return finalPaths;
 }
 
-export async function collectReplyChainText(triggerMsg: Message | StoredMessage, limit: number = 40, includeTrigger = true, cutPrefix: boolean = true): Promise<MessagePart[]> {
+export type ReplyChainOptions = {
+    triggerMsg: Message | StoredMessage | null | undefined,
+    limit?: number,
+    includeTrigger?: boolean;
+    cutPrefix?: boolean,
+    downloads?: AiDownloadedFile[]
+}
+
+export async function collectReplyChainText(options: ReplyChainOptions): Promise<MessagePart[]> {
+    const triggerMsg = options.triggerMsg;
+    const limit = options.limit ?? 40;
+    const includeTrigger = options.includeTrigger ?? true;
+    const cutPrefix = options.cutPrefix ?? true;
+    const downloads = options.downloads ?? [];
+
+    if (!triggerMsg) return [];
+
     const parts: MessagePart[] = [];
 
-    const pushPart = async (msg: Message | StoredMessage, textRequired: boolean = false) => {
-        const rawText = extractTextMessage(msg);
-        const cleanText = cutPrefix ? cutPrefixes(rawText) : rawText;
-        const imageNames = await loadImagesIfExists(msg);
+    function resolveStoredImagePath(imageName: string, attachments: StoredAttachment[]): string | undefined {
+        const directPath = photoPathByUniqueId(imageName);
+        if (fs.existsSync(directPath)) return directPath;
 
-        if (!cleanText && textRequired) return;
-        if (!cleanText && !imageNames?.length) return;
-
-        const fromId = isStoredMessage(msg) ? msg.fromId : msg.from.id;
-        const firstName = isStoredMessage(msg) ?
-            (await UserStore.get(msg.fromId))?.firstName : msg.from.first_name;
-
-        const images = imageNames ? imageNames.map(n => {
-            const filePath = photoPathByUniqueId(n);
-            return Buffer.from(fs.readFileSync(filePath)).toString("base64");
-        }) : null;
-
-        parts.push({
-            bot: fromId === botUser.id,
-            content: cleanText ? cleanText : "",
-            name: firstName,
-            images: images ? images : []
+        const attachment = attachments.find(item => {
+            if (item.kind !== "image") return false;
+            if (item.fileUniqueId && item.fileUniqueId === imageName) return true;
+            return path.basename(item.cachePath, path.extname(item.cachePath)) === imageName;
         });
+
+        if (attachment && fs.existsSync(attachment.cachePath)) {
+            return attachment.cachePath;
+        }
+
+        return undefined;
+    }
+
+    const pushPart = async (msg: Message | StoredMessage | undefined | null, textRequired: boolean = false, includeDownloads: boolean = false) => {
+        if (msg) {
+            const quoteText = extractMessageQuote(msg);
+            const rawText = extractTextMessage(msg);
+            const cleanText = cutPrefix ? cutPrefixes(rawText) : rawText;
+            const imageNames = await loadImagesIfExists(msg);
+            const messageDownloads = includeDownloads ? downloads : [];
+            const storedImageAttachments = isStoredMessage(msg)
+                ? (msg.attachments ?? []).filter(attachment => attachment.kind === "image" && fs.existsSync(attachment.cachePath))
+                : [];
+
+            if (!cleanText && !quoteText && textRequired) return;
+            if (!cleanText && !quoteText && !imageNames?.length && !storedImageAttachments.length && !messageDownloads.length) return;
+
+            const fromId = isStoredMessage(msg) ? msg.fromId : msg.from?.id;
+            const user = await UserStore.get(isStoredMessage(msg) ? msg.fromId : msg.from?.id ?? -1);
+
+            const firstName = isStoredMessage(msg) ? user?.firstName : msg.from?.first_name;
+
+            const photoImageParts: MessageImagePart[] = imageNames ? imageNames.flatMap(n => {
+                const filePath = isStoredMessage(msg)
+                    ? resolveStoredImagePath(n, storedImageAttachments)
+                    : (fs.existsSync(photoPathByUniqueId(n)) ? photoPathByUniqueId(n) : undefined);
+
+                if (!filePath) {
+                    messageLogger.warn("reply_chain.image_missing", {imageName: n, chatId: isStoredMessage(msg) ? msg.chatId : msg.chat?.id, messageId: isStoredMessage(msg) ? msg.id : msg.message_id});
+                    return [];
+                }
+
+                return [{
+                    data: Buffer.from(fs.readFileSync(filePath)).toString("base64"),
+                    mimeType: mimeTypeFromImagePath(filePath),
+                }];
+            }) : [];
+            const imageNameSet = new Set(imageNames ?? []);
+            const cachedImageAttachments = storedImageAttachments.filter(attachment => {
+                if (attachment.fileUniqueId && imageNameSet.has(attachment.fileUniqueId)) return false;
+                return !imageNameSet.has(path.basename(attachment.cachePath, path.extname(attachment.cachePath)));
+            });
+            const cachedImageParts: MessageImagePart[] = cachedImageAttachments.map(attachment => {
+                return {
+                    data: Buffer.from(fs.readFileSync(attachment.cachePath)).toString("base64"),
+                    mimeType: mimeTypeFromImageAttachment(attachment),
+                };
+            });
+            const imageParts = [...photoImageParts, ...cachedImageParts];
+
+            const audios: string[] = [];
+            const audioParts: MessageAudioPart[] = [];
+            const documents: string[] = [];
+            const videos: string[] = [];
+            const videoNotes: string[] = [];
+
+            if (messageDownloads.length) {
+                messageDownloads
+                    .filter(d => d.kind === "audio")
+                    .forEach(a => {
+                        const data = a.buffer.toString("base64");
+                        audios.push(data);
+                        audioParts.push({data, mimeType: mimeTypeFromAudioDownload(a)});
+                    });
+
+                messageDownloads
+                    .filter(d => d.kind === "document")
+                    .forEach(d => documents.push(d.buffer.toString("base64")));
+
+                messageDownloads
+                    .filter(d => d.kind === "video")
+                    .forEach(v => videos.push(v.buffer.toString("base64")));
+
+                messageDownloads
+                    .filter(d => d.kind === "video-note")
+                    .forEach(v => {
+                        const data = v.buffer.toString("base64");
+                        videoNotes.push(data);
+                        audioParts.push({data, mimeType: mimeTypeFromAudioDownload(v)});
+                    });
+            }
+
+            const content = [
+                quoteText ? `[citation]:\n${quoteText}\n\n[message]:\n` : "",
+                cleanText ?? ""
+            ].join("\n").trim();
+
+            parts.push({
+                bot: fromId === botUser.id,
+                content: content,
+                name: firstName,
+                langCode: user?.langCode,
+                userName: user?.userName,
+                deletedByBotAt: isStoredMessage(msg) ? msg.deletedByBotAt : undefined,
+                images: imageParts.map(image => image.data),
+                imageParts: imageParts.length ? imageParts : undefined,
+                audios: audios.length ? audios : undefined,
+                audioParts: audioParts.length ? audioParts : undefined,
+                documents: documents.length ? documents : undefined,
+                videos: videos.length ? videos : undefined,
+                videoNotes: videoNotes.length ? videoNotes : undefined,
+            });
+        }
     };
 
     const chatId = isStoredMessage(triggerMsg) ? triggerMsg.chatId as number : triggerMsg.chat.id;
 
     if (includeTrigger) {
-        await pushPart(triggerMsg);
+        await pushPart(triggerMsg, false, true);
     }
 
     const first = isStoredMessage(triggerMsg) ?
@@ -914,57 +1640,60 @@ export async function waveDistortSharp(
     wavelength = 72,
     maxSide = 1024
 ): Promise<Buffer> {
-    amp = clamp(amp, 2, 60);
-    wavelength = clamp(wavelength, 16, 300);
+    return imageProcessingSemaphore.runExclusive(async () => {
+        amp = clamp(amp, 2, 60);
+        wavelength = clamp(wavelength, 16, 300);
 
-    const phase1 = Math.random() * Math.PI * 2;
-    const phase2 = Math.random() * Math.PI * 2;
-    const amp2 = Math.max(6, Math.floor(amp * 0.6));
-    const wavelength2 = Math.max(32, Math.floor(wavelength * 1.4));
+        const phase1 = Math.random() * Math.PI * 2;
+        const phase2 = Math.random() * Math.PI * 2;
+        const amp2 = Math.max(6, Math.floor(amp * 0.6));
+        const wavelength2 = Math.max(32, Math.floor(wavelength * 1.4));
 
-    const {data, info} = await sharp(input)
-        .resize({width: maxSide, height: maxSide, fit: "inside", withoutEnlargement: true})
-        .ensureAlpha()
-        .raw()
-        .toBuffer({resolveWithObject: true});
+        const {data, info} = await sharp(input)
+            .resize({width: maxSide, height: maxSide, fit: "inside", withoutEnlargement: true})
+            .ensureAlpha()
+            .raw()
+            .toBuffer({resolveWithObject: true});
 
-    const width = info.width!;
-    const height = info.height!;
-    const channels = info.channels!; // обычно 4 (RGBA)
+        const width = info.width!;
+        const height = info.height!;
+        const channels = info.channels!; // usually 4 (RGBA)
 
-    const out = Buffer.alloc(data.length);
+        const out = Buffer.alloc(data.length);
 
-    for (let y = 0; y < height; y++) {
-        const dx = amp * Math.sin((2 * Math.PI * y) / wavelength + phase1);
+        for (let y = 0; y < height; y++) {
+            const dx = amp * Math.sin((2 * Math.PI * y) / wavelength + phase1);
 
-        for (let x = 0; x < width; x++) {
-            const dy = amp2 * Math.sin((2 * Math.PI * x) / wavelength2 + phase2);
+            for (let x = 0; x < width; x++) {
+                const dy = amp2 * Math.sin((2 * Math.PI * x) / wavelength2 + phase2);
 
-            const sx = Math.round(x + dx);
-            const sy = Math.round(y + dy);
+                const sx = Math.round(x + dx);
+                const sy = Math.round(y + dy);
 
-            const di = (y * width + x) * channels;
+                const di = (y * width + x) * channels;
 
-            if (sx < 0 || sx >= width || sy < 0 || sy >= height) {
-                // прозрачный пиксель
-                out[di] = 0;
-                out[di + 1] = 0;
-                out[di + 2] = 0;
-                out[di + 3] = 0;
-                continue;
+                if (sx < 0 || sx >= width || sy < 0 || sy >= height) {
+                    // transparent pixel
+                    out[di] = 0;
+                    out[di + 1] = 0;
+                    out[di + 2] = 0;
+                    out[di + 3] = 0;
+                    continue;
+                }
+
+                const si = (sy * width + sx) * channels;
+                data.copy(out, di, si, si + channels);
             }
-
-            const si = (sy * width + sx) * channels;
-            data.copy(out, di, si, si + channels);
         }
-    }
 
-    return await sharp(out, {raw: {width, height, channels}})
-        .png()
-        .toBuffer();
+        return await sharp(out, {raw: {width, height, channels}})
+            .png()
+            .toBuffer();
+    });
 }
 
-export async function downloadTelegramFile(filePath: string): Promise<Buffer> {
+export async function downloadTelegramFile(filePath?: string | null): Promise<Buffer | null> {
+    if (!filePath) return null;
     const url = `https://api.telegram.org/file/bot${Environment.BOT_TOKEN}/${filePath}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to download file: ${res.status} ${res.statusText}`);
@@ -973,11 +1702,11 @@ export async function downloadTelegramFile(filePath: string): Promise<Buffer> {
 }
 
 export function extractImageFileId(reply: Message): string | null {
-    // photo (сжатое)
+    // photo (compressed)
     if (reply.photo?.length) {
-        return reply.photo[reply.photo.length - 1]!.file_id; // самое большое
+        return reply.photo[reply.photo.length - 1]!.file_id; // largest
     }
-    // document (обычно оригинал)
+    // document (usually original)
     if (reply.document?.mime_type?.startsWith("image/")) {
         return reply.document.file_id;
     }
@@ -1003,11 +1732,11 @@ export async function makeDarkGradientBgFancy(
     const c2 = hslToHex(hue2, 35 + rndInt(rnd, 0, 14), 9 + rndInt(rnd, 0, 5));
     const c3 = hslToHex(hue3, 30 + rndInt(rnd, 0, 14), 8 + rndInt(rnd, 0, 5));
 
-    // случайный угол градиента
+    // random gradient angle
     const x1 = rnd(), y1 = rnd();
     const x2 = 1 - x1, y2 = 1 - y1;
 
-    // мягкое свечение
+    // soft glow
     const glowHue = (hue1 + rndInt(rnd, -25, 25) + 360) % 360;
     const glowColor = hslToHex(glowHue, 60, 60);
     const glowCx = 0.35 + rnd() * 0.30;
@@ -1015,10 +1744,10 @@ export async function makeDarkGradientBgFancy(
     const glowR = 0.55 + rnd() * 0.25;
     const glowOpacity = 0.14 + rnd() * 0.10;
 
-    // виньетка
+    // vignette
     const vignetteStrength = 0.55 + rnd() * 0.15;
 
-    // зерно
+    // grain
     const grainSeed = Math.floor(rnd() * 10_000);
     const grainAlpha = 0.10 + rnd() * 0.06; // 0.10..0.16
     const grainFreq = 0.75 + rnd() * 0.35;  // 0.75..1.10
@@ -1044,7 +1773,7 @@ export async function makeDarkGradientBgFancy(
       <stop offset="100%" stop-color="#000" stop-opacity="${vignetteStrength}"/>
     </radialGradient>
 
-    <!-- зерно: чёрный шум с маленькой альфой -->
+    <!-- grain: black noise with low alpha -->
     <filter id="grain" x="-10%" y="-10%" width="120%" height="120%">
       <feTurbulence type="fractalNoise"
         baseFrequency="${grainFreq}"
@@ -1058,7 +1787,7 @@ export async function makeDarkGradientBgFancy(
                 0 0 0 0 0
                 0.33 0.33 0.33 0 0"
         result="a"/>
-      <!-- масштабируем альфу (интенсивность зерна) -->
+      <!-- scale alpha (grain intensity) -->
       <feComponentTransfer in="a">
         <feFuncA type="linear" slope="${grainAlpha}"/>
       </feComponentTransfer>
@@ -1073,7 +1802,7 @@ export async function makeDarkGradientBgFancy(
 
     return sharp(svg)
         .resize(width, height)
-        .blur(0.6) // чуть сгладить градиент/свечение (зерно тоже мягче)
+        .blur(0.6) // slightly smooth the gradient/glow (grain gets softer too)
         .png()
         .toBuffer();
 }
@@ -1131,71 +1860,54 @@ export function startIntervalEditor(params: {
 }) {
     let lastSent = "";
     let stopped = false;
+    let inFlight: Promise<void> = Promise.resolve();
 
-    const tick = async () => {
+    const runTick = async () => {
         if (stopped /*|| (params.uuid && getOllamaRequest(params.uuid)?.done)*/) return;
         const next = params.getText();
         if (!next || next === lastSent) return;
 
-        console.log("tick");
-
         try {
             await params.editFn(next);
             lastSent = next;
-        } catch (e) {
-            if ((e?.description ?? e?.message ?? "").includes("message is not modified")) return;
-            logError("edit failed: " + e);
+        } catch (error) {
+            const description = error instanceof Error ? error.message : String(error);
+            if (description.includes("message is not modified")) return;
+            logError("edit failed: " + description);
         }
     };
 
-    const timer = setInterval(async () => await tick(), params.intervalMs);
+    const tick = async () => {
+        inFlight = inFlight.then(runTick, runTick);
+        return inFlight;
+    };
+
+    const timer = setInterval(() => {
+        tick().catch(logError);
+    }, params.intervalMs);
 
     return {
         tick,
         stop: async () => {
             stopped = true;
             clearInterval(timer);
+            await inFlight;
             await params.onStop?.();
         },
     };
 }
 
-export function boolToInt(bool: boolean): number {
+export function boolToInt(bool: boolean | undefined): number {
     return bool ? 1 : 0;
-}
-
-type AnyDrizzleTable = {
-    _: {
-        columns: Record<string, { name: string }>;
-    };
-};
-
-export function buildExcludedSet<
-    T extends AnyDrizzleTable,
-    K extends keyof T["_"]["columns"] & string,
-    E extends readonly K[] = readonly []
->(table: T, exclude: E = [] as unknown as E): Record<Exclude<K, E[number]>, SQL> {
-    const cols = orm.getColumns(table as never) as T["_"]["columns"];
-    const excludeSet = new Set<string>(exclude as readonly string[]);
-
-    const entries = Object.keys(cols)
-        .filter((key) => !excludeSet.has(key))
-        .map((key) => {
-            const realName = (cols as unknown)[key].name; // actual DB column name
-            return [key, sql.raw(`excluded.${realName}`)] as const;
-        });
-
-    return Object.fromEntries(entries) as Record<Exclude<K, E[number]>, SQL>;
 }
 
 type RuntimeInfo =
     | { runtime: "bun"; version: string }
     | { runtime: "node"; version: string }
-    | { runtime: "unknown"; version: string };
+    | { runtime: "other"; version: string };
 
 export function getRuntimeInfo(): RuntimeInfo {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const v = (process as any).versions ?? {};
+    const v = process.versions ?? {};
 
     if (typeof v.bun === "string") {
         return {runtime: "bun", version: v.bun};
@@ -1204,13 +1916,12 @@ export function getRuntimeInfo(): RuntimeInfo {
         return {runtime: "node", version: v.node};
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return {runtime: "unknown", version: String((process as any).version ?? "")};
+    return {runtime: "other", version: String(process.version ?? "")};
 }
 
 export type PhotoMaxSize = { width: number, height: number, url: string; file_id: string; unique_file_id: string; };
 
-export function getPhotoMaxSize(photos: PhotoSize[], target: number = Environment.MAX_PHOTO_SIZE): PhotoSize | null {
+export function getPhotoMaxSize(photos: PhotoSize[] | undefined, target: number = Environment.MAX_PHOTO_SIZE): PhotoSize | null {
     if (!photos) return null;
 
     photos = photos.filter(p => Math.max(p.width, p.height) <= target);
@@ -1223,12 +1934,11 @@ export function getPhotoMaxSize(photos: PhotoSize[], target: number = Environmen
 
     return photos.reduce((prev, cur) => {
         if (!prev) return cur;
-
         return cur.width * cur.height > prev.width * prev.height ? cur : prev;
-    }, null);
+    });
 }
 
-export async function mapPhotoSizeToMax(size: PhotoSize): Promise<PhotoMaxSize | null> {
+export async function mapPhotoSizeToMax(size: PhotoSize | null): Promise<PhotoMaxSize | null> {
     if (!size) return null;
     return {
         width: size.width,
@@ -1251,338 +1961,316 @@ export async function imageToBase64(filePath: string, withMimeType: boolean = fa
 
         return base64;
     } catch (e) {
-        logError(e);
+        logError(e instanceof Error ? e : String(e));
         return null;
     }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function ifTrue(exp?: any): boolean {
+export function ifTrue(exp?: string | number | boolean): boolean {
     if (!exp) return false;
 
-    return ["true", "t", "y", 1, "1"].includes(exp);
+    if (typeof exp === "boolean") return exp;
+
+    const normalized = exp.toString().toLowerCase().trim();
+    return ["true", "t", "y", "1"].includes(normalized);
 }
 
-export function boolToEmoji(bool: boolean): string {
-    return bool ? "✅" : "❌";
+
+export function boolToEmoji(bool: boolean | undefined): string {
+    return !!bool ? "✅" : "❌";
 }
 
-export const albumCache = new Map<string, { messages: Message[], timer: NodeJS.Timeout }>();
+type AlbumCacheEntry = {
+    messages: Message[];
+    timer: NodeJS.Timeout;
+    resolve: (value: boolean) => void;
+    storedMsg: StoredMessage | null;
+};
 
-async function processAlbum(groupId: string): Promise<string[]> {
-    const entry = albumCache.get(groupId);
+export const albumCache = new Map<string, AlbumCacheEntry>();
+
+type AlbumProcessingResult = {
+    photoUniqueIds?: string[] | null;
+    attachments: StoredAttachment[];
+    text?: string | null;
+};
+
+async function collectAlbumStoredAttachments(entry: AlbumCacheEntry): Promise<StoredAttachment[]> {
+    const storedMessages = await Promise.all(
+        entry.messages.map(message => MessageStore.get(message.chat.id, message.message_id))
+    );
+
+    return uniqueStoredAttachments(storedMessages.flatMap(message => message?.attachments ?? []));
+}
+
+function collectAlbumText(messages: Message[]): string | null {
+    const parts = messages
+        .map(message => extractTextMessage(message))
+        .filter((text): text is string => !!text?.trim());
+
+    return parts.length ? parts.join("\n").trim() : null;
+}
+
+async function processAlbum(albumKey: string): Promise<AlbumProcessingResult | undefined> {
+    const entry = albumCache.get(albumKey);
     if (!entry) return;
 
     const allPhotos = entry.messages
         .filter(m => m.photo)
         .map(m => m.photo);
 
-    const allPhotoMaxSizes = await Promise.all(allPhotos.map(photo => getPhotoMaxSize(photo)));
+    const allPhotoMaxSizes = await Promise.all(allPhotos.map(photo => getPhotoMaxSize(photo)).filter(s => !!s));
     const ids = await loadImagesFromFileIds(allPhotoMaxSizes);
+    const attachments = await collectAlbumStoredAttachments(entry);
+    const text = collectAlbumText(entry.messages);
 
-    console.log(`Received album ${groupId} with ${ids.length} photos.`);
-    console.log("File IDs:", ids);
+    albumCache.delete(albumKey);
+    return {photoUniqueIds: ids, attachments, text};
+}
 
-    albumCache.delete(groupId);
-    return ids;
+function scheduleAlbumProcessing(albumKey: string, delayMs = 1000): NodeJS.Timeout {
+    return setTimeout(async () => {
+        const entry = albumCache.get(albumKey);
+        try {
+            const album = await processAlbum(albumKey);
+            if (entry?.storedMsg) {
+                entry.storedMsg.attachments = uniqueStoredAttachments([
+                    ...(entry.storedMsg.attachments ?? []),
+                    ...(album?.photoUniqueIds ?? []).map(uniqueId => createStoredImageAttachment({
+                        fileId: uniqueId,
+                        fileUniqueId: uniqueId,
+                        cachePath: photoCachePathForUniqueId(uniqueId),
+                    })),
+                    ...(album?.attachments ?? []),
+                ]);
+                if (album?.text) {
+                    entry.storedMsg.text = album.text;
+                }
+                await MessageStore.put(entry.storedMsg).catch(logError);
+            }
+
+            if (entry && album?.attachments.length) {
+                await Promise.all(entry.messages.map(async message => {
+                    const stored = await MessageStore.get(message.chat.id, message.message_id);
+                    if (!stored) return;
+
+                    stored.attachments = uniqueStoredAttachments([
+                        ...(stored.attachments ?? []),
+                        ...(album.photoUniqueIds ?? []).map(uniqueId => createStoredImageAttachment({
+                            fileId: uniqueId,
+                            fileUniqueId: uniqueId,
+                            cachePath: photoCachePathForUniqueId(uniqueId),
+                        })),
+                        ...album.attachments,
+                    ]);
+                    if (album.text) {
+                        stored.text = album.text;
+                    }
+                    await MessageStore.put(stored).catch(logError);
+                }));
+            }
+        } catch (e) {
+            logError(e instanceof Error ? e : String(e));
+        } finally {
+            albumCache.delete(albumKey);
+            entry?.resolve(true);
+        }
+    }, delayMs);
 }
 
 export function photoPathByUniqueId(uniqueId: string): string {
-    return path.join(photoDir, uniqueId + ".jpg");
-}
-
-export function getCurrentModel(): string {
-    switch (Environment.DEFAULT_AI_PROVIDER) {
-        case AiProvider.OLLAMA:
-            return Environment.OLLAMA_MODEL;
-        case AiProvider.GEMINI:
-            return Environment.GEMINI_MODEL;
-        case AiProvider.MISTRAL:
-            return Environment.MISTRAL_MODEL;
-        case AiProvider.OPENAI:
-            return Environment.OPENAI_MODEL;
-    }
-}
-
-export async function getCurrentModelCapabilities(): Promise<AiModelCapabilities | null> {
-    let promise: Promise<AiModelCapabilities | null> = null;
-    switch (Environment.DEFAULT_AI_PROVIDER) {
-        case AiProvider.OLLAMA: {
-            const ollamaGetModel = commands.find(c => c instanceof OllamaGetModel);
-
-            // eslint-disable-next-line no-async-promise-executor
-            promise = new Promise(async (resolve, reject) => {
-                try {
-                    const result = {
-                        vision: (await ollamaGetModel.loadImageModelInfo()).vision,
-                        ocr: null,
-                        thinking: (await ollamaGetModel.loadThinkModelInfo()).thinking,
-                        tools: (await ollamaGetModel.getModelCapabilities()).tools
-                    };
-                    resolve(result);
-                } catch (e) {
-                    reject(e);
-                }
-            });
-            break;
-        }
-        case AiProvider.GEMINI: {
-            promise = commands.find(c => c instanceof GeminiGetModel).getModelCapabilities();
-            break;
-        }
-        case AiProvider.MISTRAL: {
-            promise = commands.find(c => c instanceof MistralGetModel).getModelCapabilities();
-            break;
-        }
-        case AiProvider.OPENAI: {
-            promise = commands.find(c => c instanceof OpenAIGetModel).getModelCapabilities();
-            break;
-        }
-    }
-
-    if (!promise) return null;
-
-    try {
-        return await promise;
-    } catch (e) {
-        logError(e);
-        return null;
-    }
+    return photoCachePathForUniqueId(uniqueId);
 }
 
 export async function processMyChatMember(u: ChatMemberUpdated): Promise<void> {
-    console.log("my_chat_member", u);
+    messageLogger.debug("my_chat_member", {update: u});
 }
 
-export async function processNewMessage(msg: Message): Promise<void> {
-    console.log("New Message", msg);
+export async function processGuestMessage(msg: Message): Promise<void> {
+    // return processNewMessage(msg, true);
+    messageLogger.debug("guest_message.received", {message: msg});
+}
+
+export async function processNewMessage(msg: Message, isGuest?: boolean): Promise<void> {
+    messageLogger.debug(isGuest ? "guest_message.received" : "message.received", {message: msg});
+
+    if (!msg.from) {
+        messageLogger.debug("message.skipped.no_sender", {chatId: msg.chat?.id, messageId: msg.message_id});
+        return;
+    }
+
+    const startedAt = Date.now();
+    const from = msg.from;
+    Environment.reloadRuntimeConfigIfChanged();
 
     let storedMsg: StoredMessage | null = null;
+    let locale = Localization.resolveLocale(undefined, from.language_code);
 
     try {
         const results = await Promise.all([
                 MessageStore.put(msg),
-                UserStore.put(msg.from)
+                UserStore.put(from)
             ]
         );
+        messageLogger.debug("message.persisted", {
+            chatId: msg.chat.id,
+            messageId: msg.message_id,
+            fromId: from.id,
+            duration: logger.duration(startedAt)
+        });
 
         storedMsg = results[0];
-        if (!msg.media_group_id && storedMsg.photoMaxSizeFilePath) {
+        locale = await resolveInterfaceLocaleForUser(from.id, from.language_code);
+        const attachmentPipeline = await runTelegramMessageAttachmentPipeline(msg, storedMsg);
+        storedMsg = attachmentPipeline.storedMessage;
+        const rejected = attachmentPipeline.rejected;
+        if (rejected.length) {
+            await Localization.runWithLocale(locale, async () => {
+                await replyToMessage({
+                    message: msg,
+                    text: rejected
+                        .map(attachment => Environment.getTelegramFileTooLargeText(
+                            attachment.fileName,
+                            attachment.limitBytes / 1024 / 1024,
+                        ))
+                        .join("\n"),
+                }).catch(logError);
+            });
+        }
+
+        if (!msg.media_group_id && msg.photo?.length) {
             await loadImagesIfExists(msg);
         }
     } catch (e) {
-        logError(e);
+        logError(e instanceof Error ? e : String(e));
     }
 
-    if ((msg.new_chat_members?.length)) {
-        await bot.sendMessage({chat_id: msg.chat.id, text: randomValue(Environment.ANSWERS.invite)}).catch(logError);
-        return;
-    }
-
-    if (msg.left_chat_member && msg.left_chat_member.id !== botUser.id) {
-        await bot.sendMessage({chat_id: msg.chat.id, text: randomValue(Environment.ANSWERS.kick)}).catch(logError);
-        return;
-    }
-
-    if (Environment.MUTED_IDS.has(msg.from.id)) return;
-
-    if (msg.forward_origin) return;
-
-    const groupId = msg.media_group_id;
-    if (groupId) {
-        await new Promise<true>(resolve => {
-            if (!albumCache.has(groupId)) {
-                albumCache.set(groupId, {
-                    messages: [msg],
-                    timer: setTimeout(async () => {
-                        const photos = await processAlbum(groupId);
-                        console.log("processedAlbum", photos);
-
-                        storedMsg.photoMaxSizeFilePath = photos;
-                        await MessageStore.put(storedMsg).catch(logError);
-                        resolve(true);
-                    }, 1000)
-                });
-            } else {
-                const entry = albumCache.get(groupId);
-                entry.messages.push(msg);
+    await Localization.runWithLocale(locale, async () => {
+        if ((msg.new_chat_members?.length)) {
+            const text = randomValue(Environment.ANSWERS.invite);
+            if (text) {
+                await enqueueTelegramApiCall(
+                    () => bot.sendMessage({chat_id: msg.chat.id, text}),
+                    {method: "sendMessage", chatId: msg.chat.id, chatType: msg.chat.type}
+                ).catch(logError);
             }
-        });
-    }
-
-    const cmdText = msg.text || msg.caption || "";
-
-    const then = Date.now();
-
-    const cmd = searchChatCommand(commands, cmdText);
-    const executed = await executeChatCommand(cmd, msg, cmdText);
-
-    const now = Date.now();
-    const diff = now - then;
-    console.log("diff", diff);
-
-    if (executed || !cmdText) return;
-
-    const startsWithPrefix = cmdText.toLowerCase().startsWith(Environment.BOT_PREFIX.toLowerCase());
-    const messageWithoutPrefix = cmdText.substring(Environment.BOT_PREFIX.length).trim();
-
-    if (startsWithPrefix && messageWithoutPrefix.length === 0) {
-        const prefixResponse = new PrefixResponse();
-        if (await checkRequirements(prefixResponse, msg)) {
-            await prefixResponse.execute(msg);
-        }
-        return;
-    }
-
-    const textToCheck = startsWithPrefix ? messageWithoutPrefix : cmdText;
-
-    if (Environment.PROCESS_LINKS && await processYouTubeLink(msg, getFirstLink(msg))) return;
-
-    if (msg.chat.type !== "private" && (!msg.reply_to_message || msg.reply_to_message.from.id !== botUser.id) && !startsWithPrefix) return;
-
-    if (msg.chat.type === "private" && !Environment.ADMIN_IDS.has(msg.chat.id)) return;
-
-    switch (Environment.DEFAULT_AI_PROVIDER) {
-        case AiProvider.OLLAMA: {
-            await commands.find(e => e instanceof OllamaChat).executeOllama(msg, textToCheck);
-            break;
-        }
-        case AiProvider.GEMINI: {
-            await commands.find(e => e instanceof GeminiChat).executeGemini(msg, textToCheck);
-            break;
-        }
-        case AiProvider.MISTRAL: {
-            await commands.find(e => e instanceof MistralChat).executeMistral(msg, textToCheck);
-            break;
-        }
-        case AiProvider.OPENAI: {
-            await commands.find(e => e instanceof OpenAIChat).executeOpenAI(msg, textToCheck);
-            break;
-        }
-    }
-}
-
-function getFirstLink(msg: Message): string | null {
-    if (msg.entities) {
-        const urlEntities = msg.entities.filter(e => e.type === "url");
-        if (urlEntities.length) {
-            const e = urlEntities[0];
-            return msg.text.substring(e.offset, e.offset + e.length);
-        }
-    }
-
-    return null;
-}
-
-export async function processYouTubeLink(msg: Message, url?: string, id?: string): Promise<boolean> {
-    if (!url && !id) return false;
-
-    let waitMessage: Message | null = msg.from.id === botUser.id ? msg : null;
-    let videoId: string | null = null;
-
-    try {
-        try {
-            videoId = id || getYouTubeVideoId(url);
-        } catch (e) {
-            logError(e);
-            return false;
+            return;
         }
 
-        const yt = commands.find(e => e instanceof YouTubeDownload);
-
-        if (await checkRequirements(yt, msg)) {
-            if (!waitMessage) {
-                waitMessage = await replyToMessage({
-                    message: msg,
-                    text: "⏳ Ищу информацию о видео..."
-                });
-            } else {
-                await editMessageText({message: msg, text: "⏳ Ищу информацию о видео..."});
-
+        if (msg.left_chat_member && msg.left_chat_member.id !== botUser.id) {
+            const text = randomValue(Environment.ANSWERS.kick);
+            if (text) {
+                await enqueueTelegramApiCall(
+                    () => bot.sendMessage({chat_id: msg.chat.id, text}),
+                    {method: "sendMessage", chatId: msg.chat.id, chatType: msg.chat.type}
+                ).catch(logError);
             }
+            return;
+        }
 
-            let videoInfo: VideoInfo | null = null;
-            let ytError: string = null;
+        if (Environment.MUTED_IDS.has(from.id)) return;
 
-            try {
-                videoInfo = await getYouTubeVideoInfo(videoId);
-            } catch (e) {
-                logError(e);
+        if (msg.forward_origin) return;
 
-                if ("version" in e) {
-                    ytError = e.message;
-                }
-            }
-
-            console.log("VIDEO_INFO", videoInfo);
-
-            let text: string = null;
-
-            const inCache = isVideoExists({videoId: videoId});
-
-            const duration = videoInfo?.basic_info?.duration || null;
-            const canDownload = inCache || duration && duration <= 300;
-
-            if (videoInfo) {
-                text = "Видео с YouTube\n\n" +
-                    `Название: ${videoInfo.basic_info?.title}\n` +
-                    `Автор: ${videoInfo.secondary_info?.owner?.author?.name}\n` +
-                    `Длительность: ${duration} сек.`;
-
-                if (!canDownload) {
-                    text += `\n\nВидео слишком длинное (${duration} сек. > 300 сек.)`;
-                }
-            } else if (!ytError) {
-                text = "Информация о видео не найдена";
-            }
-
-            const errorButInCache = !videoInfo && ytError && inCache;
-            if (errorButInCache) {
-                text = "Я не смог получить информацию о видео, но нашёл его в кэше.";
-            }
-
-            if (!text && ytError) {
-                await editMessageText({
-                    message: waitMessage,
-                    text: Environment.errorText,
-                    reply_markup: {
-                        inline_keyboard: [[
-                            TryAgain.withData("/ytinfo " + videoId).asButton()
-                        ]]
+        const groupId = msg.media_group_id;
+        if (groupId) {
+            const albumKey = `${msg.chat.id}:${groupId}`;
+            const shouldContinue = await new Promise<boolean>(resolve => {
+                if (!albumCache.has(albumKey)) {
+                    albumCache.set(albumKey, {
+                        messages: [msg],
+                        timer: scheduleAlbumProcessing(albumKey),
+                        resolve,
+                        storedMsg,
+                    });
+                } else {
+                    const entry = albumCache.get(albumKey);
+                    if (entry) {
+                        entry.messages.push(msg);
+                        clearTimeout(entry.timer);
+                        entry.timer = scheduleAlbumProcessing(albumKey);
                     }
-                });
-            } else {
-                await editMessageText({
-                    message: waitMessage,
-                    text: text,
-                    reply_markup: canDownload ? {
-                        inline_keyboard: [[
-                            DownloadYtVideo.withData(inCache, "/ytdl " + videoId).asButton()
-                        ]]
-                    } : {inline_keyboard: []}
-                });
+                    resolve(false);
+                }
+            });
+
+            if (!shouldContinue) return;
+
+            storedMsg = await MessageStore.get(msg.chat.id, msg.message_id) ?? storedMsg;
+        }
+
+        const cmdText = storedMsg?.text || msg.text || msg.caption || "";
+
+        const cmd = searchChatCommand(commands, cmdText);
+        const executed = await executeChatCommand(cmd, msg, cmdText);
+
+        const hasAudioAttachment = !!msg.voice || !!msg.audio || !!msg.document?.mime_type?.startsWith("audio/")
+            || !!msg.video_note;
+        const hasImageAttachment = !!msg.photo?.length || !!msg.document?.mime_type?.startsWith("image/");
+        if (executed) {
+            messageLogger.debug("message.command_executed", {
+                chatId: msg.chat.id,
+                messageId: msg.message_id,
+                command: cmd?.title
+            });
+            return;
+        }
+
+        if (!cmdText && !hasAudioAttachment && !hasImageAttachment) {
+            messageLogger.debug("message.skipped.empty", {chatId: msg.chat.id, messageId: msg.message_id});
+            return;
+        }
+
+        const hasConfiguredPrefix = Environment.BOT_PREFIX.length > 0;
+        const startsWithPrefix = hasConfiguredPrefix && cmdText.toLowerCase().startsWith(Environment.BOT_PREFIX.toLowerCase());
+        const messageWithoutPrefix = startsWithPrefix ? cmdText.substring(Environment.BOT_PREFIX.length).trim() : cmdText.trim();
+
+        if (startsWithPrefix && messageWithoutPrefix.length === 0) {
+            const prefixResponse = new PrefixResponse();
+            if (await checkRequirements(prefixResponse, msg)) {
+                await prefixResponse.execute(msg);
+            }
+            return;
+        }
+
+        const textToCheck = startsWithPrefix ? messageWithoutPrefix : cmdText;
+
+        if (msg.chat.type !== "private") {
+            if (Environment.ONLY_FOR_CREATOR_MODE && from.id !== Environment.CREATOR_ID) {
+                return;
+            }
+
+            const isReplyToBot = !!msg.reply_to_message && msg.reply_to_message.from?.id === botUser.id;
+            const hasPrefix = startsWithPrefix;
+            const hasBotMention = !!msg.entities?.some(entity => {
+                if (entity.type !== "mention") return false;
+                const mention = msg.text?.slice(entity.offset, entity.offset + entity.length) ?? msg.caption?.slice(entity.offset, entity.offset + entity.length) ?? "";
+                return mention.toLowerCase() === `@${botUser.username?.toLowerCase()}`;
+            });
+
+            if (!isReplyToBot && !hasPrefix && !hasBotMention && !hasAudioAttachment) {
+                messageLogger.debug("message.skipped.not_addressed", {chatId: msg.chat.id, messageId: msg.message_id});
+                return;
             }
         }
-        return true;
-    } catch (e) {
-        logError(e);
 
-        await editMessageText({
-            message: waitMessage,
-            text: Environment.errorText,
-            reply_markup: {
-                inline_keyboard: [[
-                    TryAgain.withData("/ytinfo " + videoId).asButton()
-                ]]
-            }
-        });
-    }
+        const provider = await resolveEffectiveAiProviderForUser(from.id);
 
-    return false;
+        messageLogger.info("ai.dispatch", {chatId: msg.chat.id, messageId: msg.message_id, fromId: from.id, provider});
+        void runUnifiedAi({
+            provider: provider,
+            msg: msg,
+            isGuestMsg: !!isGuest,
+            text: textToCheck,
+            stream: true,
+        }).catch(logError);
+    });
 }
 
 export async function processEditedMessage(msg: Message): Promise<void> {
-    console.log("Edited Message", msg);
+    if (!msg.from) return;
+
+    Environment.reloadRuntimeConfigIfChanged();
 
     await UserStore.put(msg.from);
 
@@ -1592,55 +2280,84 @@ export async function processEditedMessage(msg: Message): Promise<void> {
 }
 
 export async function processInlineQuery(query: InlineQuery): Promise<void> {
-    console.log("InlineQuery", query);
+    Environment.reloadRuntimeConfigIfChanged();
+    const locale = await resolveInterfaceLocaleForUser(query.from.id, query.from.language_code);
 
-    if (Environment.CREATOR_ID !== query.from.id) {
-        await bot.answerInlineQuery({
-            inline_query_id: query.id,
-            results: [],
-            button: {
-                text: "No access",
-                start_parameter: "nope"
-            }
-        }).catch(logError);
-        return;
-    }
-
-    if (query.query.trim().length !== 0) {
-        try {
-            const queryResults: InlineQueryResult[] = [];
-            const results = await ollama.webSearch({query: query.query});
-
-            console.log("results", results);
-
-            results.results.forEach((result, i) => {
-                const r = result as WebSearchResponse;
-                queryResults.push({
-                    type: "article",
-                    id: `${i}`,
-                    title: `${r.title}`,
-                    input_message_content: {
-                        message_text: `${r.title}\n\n${r.url}`
+    await Localization.runWithLocale(locale, async () => {
+        if (Environment.CREATOR_ID !== query.from.id) {
+            await enqueueTelegramApiCall(
+                () => bot.answerInlineQuery({
+                    inline_query_id: query.id,
+                    results: [],
+                    button: {
+                        text: Environment.noAccessText,
+                        start_parameter: "nope"
                     }
-                });
-            });
-
-            await bot.answerInlineQuery({
-                inline_query_id: query.id,
-                results: queryResults,
-            });
-        } catch (e) {
-            logError(e);
+                }),
+                {method: "answerInlineQuery", skipPerChatLimit: true}
+            ).catch(logError);
+            return;
         }
-    } else {
-        await bot.answerInlineQuery({
-            inline_query_id: query.id,
-            results: [],
-        }).catch(logError);
-    }
+
+        if (query.query.trim().length !== 0) {
+            try {
+                const target = resolveAiRuntimeTarget(AiProvider.OLLAMA, "chat");
+                const results = await createOllamaClient(target).webSearch({query: query.query, maxResults: 10});
+                const queryResults: InlineQueryResult[] = (results.results ?? []).map((result, index) => {
+                    const content = result.content.trim();
+                    const [firstLine] = content.split("\n");
+                    const title = firstLine?.trim().slice(0, 128) || query.query;
+
+                    return {
+                        type: "article" as const,
+                        id: `ollama-search-${index}`,
+                        title,
+                        description: content.slice(0, 256),
+                        input_message_content: {
+                            message_text: content,
+                        }
+                    };
+                });
+
+                await enqueueTelegramApiCall(
+                    () => bot.answerInlineQuery({
+                        inline_query_id: query.id,
+                        results: queryResults,
+                        cache_time: 60,
+                        is_personal: true,
+                    }),
+                    {method: "answerInlineQuery", skipPerChatLimit: true}
+                );
+            } catch (e) {
+                logError(e instanceof Error ? e : String(e));
+                await enqueueTelegramApiCall(
+                    () => bot.answerInlineQuery({
+                        inline_query_id: query.id,
+                        results: [],
+                        cache_time: 0,
+                        is_personal: true,
+                    }),
+                    {method: "answerInlineQuery", skipPerChatLimit: true}
+                ).catch(logError);
+            }
+        } else {
+            await enqueueTelegramApiCall(
+                () => bot.answerInlineQuery({
+                    inline_query_id: query.id,
+                    results: [],
+                }),
+                {method: "answerInlineQuery", skipPerChatLimit: true}
+            ).catch(logError);
+        }
+    });
 }
 
 export async function processCallbackQuery(query: CallbackQuery): Promise<void> {
-    console.log("CallbackQuery", query);
-    await findAndExecuteCallbackCommand(callbackCommands, query);
+    Environment.reloadRuntimeConfigIfChanged();
+    const locale = await resolveInterfaceLocaleForUser(query.from.id, query.from.language_code);
+    await Localization.runWithLocale(locale, () => findAndExecuteCallbackCommand(callbackCommands, query));
+}
+
+export async function runCommand(cmd: string): Promise<ShellCommandResult> {
+    return ShellCommandRunner.run(cmd);
 }

@@ -2,48 +2,39 @@ import {Command} from "../base/command";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {Message} from "typescript-telegram-bot-api";
-import {bot, ollama} from "../index";
-import {WebSearchResponse} from "../model/web-search-response";
-import {oldEditMessageText, logError} from "../util/utils";
+import {escapeHtml, logError, replyToMessage} from "../util/utils";
 import {Environment} from "../common/environment";
+import {createOllamaClient, resolveAiRuntimeTarget} from "../ai/ai-runtime-target";
+import {AiProvider} from "../model/ai-provider";
 
 export class OllamaSearch extends Command {
     command = ["s", "search"];
     argsMode = "required" as const;
 
-    title = "/search";
-    description = "Web search via Ollama";
+    title = Environment.commandTitles.ollamaSearch;
+    description = Environment.commandDescriptions.ollamaSearch;
 
     override requirements = Requirements.Build(Requirement.BOT_ADMIN);
 
     async execute(msg: Message, match?: RegExpExecArray | null): Promise<void> {
-        console.log("match", match);
-        const chatId = msg.chat.id;
+        const query = match?.[3] || "";
+        if (!query || !query.length) return;
 
         try {
-            const wait = await bot.sendMessage({
-                chat_id: chatId,
-                text: Environment.waitThinkText,
-                reply_parameters: {
-                    chat_id: chatId,
-                    message_id: msg.message_id
-                },
-                parse_mode: "Markdown"
+            const target = resolveAiRuntimeTarget(AiProvider.OLLAMA, "chat");
+            const result = await createOllamaClient(target).webSearch({query, maxResults: 10});
+            const body = (result.results ?? [])
+                .map((item, index) => `${index + 1}. ${item.content}`)
+                .join("\n\n");
+
+            await replyToMessage({
+                message: msg,
+                text: Environment.searchResultsHeaderText + "<blockquote expandable>" + escapeHtml(body) + "</blockquote>",
+                parse_mode: "HTML",
             });
-
-            const results = await ollama.webSearch({query: match?.[3]});
-            console.log("results", results);
-
-            let message = "Результаты:\n\n";
-            results.results.forEach((result, index) => {
-                const r = result as WebSearchResponse;
-                message += `${index + 1}. ${r.url}\n`;
-            });
-
-            await oldEditMessageText(chatId, wait.message_id, message);
         } catch (error) {
-            logError(error);
+            logError(error instanceof Error ? error : String(error));
+            await replyToMessage({message: msg, text: Environment.errorText}).catch(logError);
         }
-        return Promise.resolve();
     }
 }

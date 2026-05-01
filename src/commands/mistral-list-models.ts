@@ -1,36 +1,13 @@
-import {Command} from "../base/command";
-import {Requirements} from "../base/requirements";
-import {Requirement} from "../base/requirement";
-import {Message} from "typescript-telegram-bot-api";
-import {mistralAi} from "../index";
-import {logError, oldReplyToMessage, replyToMessage} from "../util/utils";
+import {Environment} from "../common/environment";
+import {AiProvider} from "../model/ai-provider";
+import {ProviderListModelsCommand} from "./provider-model-command";
 
-export class MistralListModels extends Command {
-    title = "/mistralListModels";
-    description = "List all Mistral models";
-
-    requirements = Requirements.Build(Requirement.BOT_CREATOR);
-
-    async execute(msg: Message): Promise<void> {
-        try {
-            const listResponse = await mistralAi.models.list();
-            console.log(listResponse);
-
-            const modelsString = listResponse.data
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map(e => `${e.id}`)
-                .join("\n");
-
-            const text = "Доступные модели:\n\n" + "<blockquote expandable>" + modelsString + "</blockquote>";
-
-            await replyToMessage({
-                message: msg,
-                text: text,
-                parse_mode: "HTML"
-            });
-        } catch (e) {
-            logError(e);
-            await oldReplyToMessage(msg, "Не получилось загрузить список моделей").catch(logError);
-        }
+export class MistralListModels extends ProviderListModelsCommand {
+    constructor() {
+        super({
+            provider: AiProvider.MISTRAL,
+            title: Environment.commandTitles.mistralListModels,
+            description: Environment.commandDescriptions.mistralListModels,
+        });
     }
 }

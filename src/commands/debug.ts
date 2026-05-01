@@ -3,10 +3,11 @@ import {Message} from "typescript-telegram-bot-api";
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {logError, replyToMessage} from "../util/utils";
+import {Environment} from "../common/environment";
 
 export class Debug extends Command {
-    title = "/debug";
-    description = "Returns msg (or reply) as json";
+    title = Environment.commandTitles.debug;
+    description = Environment.commandDescriptions.debug;
 
     requirements = Requirements.Build(Requirement.BOT_ADMIN);
 

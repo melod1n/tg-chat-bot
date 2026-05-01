@@ -25,5 +25,6 @@ USER node
 
 COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/assets ./assets
+COPY --chown=node:node locales ./locales
 
 CMD ["node", "dist/index.js"]

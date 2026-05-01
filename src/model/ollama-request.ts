@@ -1,7 +1,6 @@
 export type OllamaRequest = {
     uuid: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    stream: any;
+    stream: boolean | string | number | object | null | undefined;
     done: boolean;
     fromId: number;
     chatId: number;

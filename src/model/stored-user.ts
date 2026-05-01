@@ -5,4 +5,11 @@ export type StoredUser = {
     lastName?: string;
     userName?: string;
     isPremium?: boolean;
+    langCode?: string;
+    interfaceLanguage?: string;
+    aiProvider?: string;
+    aiResponseLanguage?: string;
+    aiContextSize?: number;
+    aiVoiceMode?: string;
+    aiImageOutputMode?: string;
 }

@@ -4,13 +4,15 @@ import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import {logError, oldReplyToMessage} from "../util/utils";
 import {bot} from "../index";
+import {enqueueTelegramApiCall} from "../util/telegram-api-queue";
+import {Environment} from "../common/environment";
 
 export class Title extends Command {
     command = "title";
     argsMode = "required" as const;
 
-    title = "/title";
-    description = "Change group title";
+    title = Environment.commandTitles.title;
+    description = Environment.commandDescriptions.title;
 
     requirements = Requirements.Build(
         Requirement.BOT_ADMIN,
@@ -22,10 +24,13 @@ export class Title extends Command {
     async execute(msg: Message, match?: RegExpExecArray): Promise<void> {
         const title = (match?.[3] ?? "").trim();
         if (title.length === 0) {
-            await oldReplyToMessage(msg, "Не нашёл название...").catch(logError);
+            await oldReplyToMessage(msg, Environment.titleMissingText).catch(logError);
             return;
         }
 
-        await bot.setChatTitle({chat_id: msg.chat.id, title: title}).catch(logError);
+        await enqueueTelegramApiCall(
+            () => bot.setChatTitle({chat_id: msg.chat.id, title: title}),
+            {method: "setChatTitle", chatId: msg.chat.id, chatType: msg.chat.type}
+        ).catch(logError);
     }
 }

@@ -3,17 +3,18 @@ import {CallbackQuery, InlineKeyboardButton} from "typescript-telegram-bot-api";
 import {Requirements} from "./requirements";
 import {bot} from "../index";
 import {logError} from "../util/utils";
+import {enqueueTelegramApiCall} from "../util/telegram-api-queue";
 
 export abstract class CallbackCommand {
 
     abstract text: string;
     abstract data: string;
-    requirements?: Requirements = null;
+    requirements?: Requirements | null = null;
 
     abstract execute(query: CallbackQuery): Promise<void>;
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    afterExecute(query: CallbackQuery): Promise<void> {
+    afterExecute(_query: CallbackQuery): Promise<void> {
         return Promise.resolve();
     }
 
@@ -23,7 +24,10 @@ export abstract class CallbackCommand {
     }
 
     async answerCallbackQuery(query: CallbackQuery): Promise<void> {
-        bot.answerCallbackQuery(this.getOptions(query)).catch(logError);
+        enqueueTelegramApiCall(
+            () => bot.answerCallbackQuery(this.getOptions(query)),
+            {method: "answerCallbackQuery", skipPerChatLimit: true}
+        ).catch(logError);
     }
 
     asButton(): InlineKeyboardButton {

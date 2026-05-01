@@ -23,5 +23,6 @@ RUN bun install --frozen-lockfile --production
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/assets ./assets
+COPY locales ./locales
 
 CMD [ "bun", "dist/index.js" ]

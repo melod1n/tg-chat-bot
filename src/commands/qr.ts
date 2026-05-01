@@ -1,15 +1,17 @@
 import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
-import {extractMessagePayload, logError, replyToMessage} from "../util/utils";
+import {escapeHtml, extractMessagePayload, logError, replyToMessage} from "../util/utils";
 import {bot, botUser} from "../index";
 import QRCode from "qrcode";
+import {enqueueTelegramApiCall} from "../util/telegram-api-queue";
+import {Environment} from "../common/environment";
 
 export class Qr extends Command {
 
     argsMode = "optional" as const;
 
-    title = "/qr";
-    description = "Generates QR-code from text you sent or replied to.";
+    title = Environment.commandTitles.qr;
+    description = Environment.commandDescriptions.qr;
 
     async execute(msg: Message, match?: RegExpExecArray): Promise<void> {
         const chatId = msg.chat.id;
@@ -19,27 +21,29 @@ export class Qr extends Command {
             await replyToMessage(
                 {
                     message: msg,
-                    text: "Не найден текст для генерации QR-кода."
+                    text: Environment.qrCodeMissingTextText
                 }
             );
             return;
         }
 
-        // TODO: 16/02/2026, Danil Nikolaev: escape html symbols in payload
-
-        if (payload.length > 1500) {
-            payload = payload.slice(0, 1500);
+        const maxQrPayloadLength = 1500;
+        if (payload.length > maxQrPayloadLength) {
+            payload = payload.slice(0, maxQrPayloadLength);
 
             await replyToMessage(
                 {
                     message: msg,
-                    text: `Слишком длинный текст для QR (${payload.length} символов). Текст будет обрезан до 1500 символов.`
+                    text: Environment.getQrCodeTextTooLongText(payload.length, maxQrPayloadLength)
                 }
             );
         }
 
         try {
-            await bot.sendChatAction({chat_id: chatId, action: "upload_photo"});
+            await enqueueTelegramApiCall(
+                () => bot.sendChatAction({chat_id: chatId, action: "upload_photo"}),
+                {method: "sendChatAction", chatId, chatType: msg.chat.type}
+            );
 
             const pngBuffer = await QRCode.toBuffer(payload, {
                 type: "png",
@@ -49,22 +53,26 @@ export class Qr extends Command {
             });
 
             const maxCaptionLength = botUser.is_premium ? 4096 : 1024;
+            const visiblePayload = payload.length > maxCaptionLength - 80
+                ? payload.slice(0, maxCaptionLength - 83) + "..."
+                : payload;
 
-            await bot.sendPhoto({
-                chat_id: chatId,
-                photo: pngBuffer,
-                caption: "QR-код готов ✅\nСодержимое:\n<blockquote expandable>" +
-                    `${payload.length > maxCaptionLength ? payload.slice(0, maxCaptionLength - 40) + "..." : payload}` +
-                    "</blockquote>",
-                reply_parameters: {
-                    message_id: msg.message_id,
-                },
-                parse_mode: "HTML"
-            });
-        } catch (e) {
+            await enqueueTelegramApiCall(
+                () => bot.sendPhoto({
+                    chat_id: chatId,
+                    photo: pngBuffer,
+                    caption: Environment.getQrCodeReadyText(escapeHtml(visiblePayload)),
+                    reply_parameters: {
+                        message_id: msg.message_id,
+                    },
+                    parse_mode: "HTML"
+                }),
+                {method: "sendPhoto", chatId, chatType: msg.chat.type}
+            );
+        } catch (error) {
             await replyToMessage({
                 message: msg,
-                text: `Не получилось сгенерировать QR: ${e?.message ?? String(e)}`
+                text: Environment.getQrCodeFailedText(error instanceof Error ? error : String(error))
             }).catch(logError);
         }
     }

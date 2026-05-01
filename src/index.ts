@@ -1,13 +1,15 @@
 import "dotenv/config";
+import {appLogger} from "./logging/logger";
 import {Environment} from "./common/environment";
-import {TelegramBot, User} from "typescript-telegram-bot-api";
+import {BotCommand, TelegramBot, User} from "typescript-telegram-bot-api";
 import {Command} from "./base/command";
+import type {LogDetails} from "./logging/logger";
 import {
-    delay,
     initSystemSpecs,
     logError,
     processCallbackQuery,
     processEditedMessage,
+    processGuestMessage,
     processInlineQuery,
     processMyChatMember,
     processNewMessage
@@ -20,24 +22,21 @@ import {Ping} from "./commands/ping";
 import {RandomString} from "./commands/random-string";
 import {SystemInfo} from "./commands/system-info";
 import {Test} from "./commands/test";
-import {readData, readPrompts, retrieveAnswers} from "./db/database";
+import {readData, retrieveAnswers} from "./db/database";
 import {Uptime} from "./commands/uptime";
 import {WhatBetter} from "./commands/what-better";
 import {When} from "./commands/when";
 import {RandomInt} from "./commands/random-int";
 import {Ban} from "./commands/ban";
 import {Quote} from "./commands/quote";
-import {Ollama} from "ollama";
 import {OllamaSearch} from "./commands/ollama-search";
 import {Id} from "./commands/id";
-import {OllamaPrompt} from "./commands/ollama-prompt";
 import {AdminsAdd} from "./commands/admins-add";
 import {AdminsRemove} from "./commands/admins-remove";
 import {Shutdown} from "./commands/shutdown";
 import {Leave} from "./commands/leave";
 import {OllamaChat} from "./commands/ollama-chat";
 import {Start} from "./commands/start";
-import {GeminiChat} from "./commands/gemini-chat";
 import {Choice} from "./commands/choice";
 import {Coin} from "./commands/coin";
 import {Qr} from "./commands/qr";
@@ -49,40 +48,33 @@ import {MessageDao} from "./db/message-dao";
 import {DatabaseManager} from "./db/database-manager";
 import {UserDao} from "./db/user-dao";
 import {UserStore} from "./common/user-store";
-import {OllamaRequest} from "./model/ollama-request";
 import {CallbackCommand} from "./base/callback-command";
-import {OllamaCancel} from "./callback_commands/ollama-cancel";
+import {AiCancel} from "./callback_commands/ai-cancel";
+import {AiRegenerate} from "./callback_commands/ai-regenerate";
 import {MistralChat} from "./commands/mistral-chat";
 import {Transliteration} from "./commands/transliteration";
 import {OllamaListModels} from "./commands/ollama-list-models";
 import {OllamaGetModel} from "./commands/ollama-get-model";
 import {OllamaSetModel} from "./commands/ollama-set-model";
-import {Mistral} from "@mistralai/mistralai";
-import {GoogleGenAI} from "@google/genai";
 import {MistralGetModel} from "./commands/mistral-get-model";
 import {MistralSetModel} from "./commands/mistral-set-model";
 import {MistralListModels} from "./commands/mistral-list-models";
-import {GeminiListModels} from "./commands/gemini-list-models";
-import {GeminiGetModel} from "./commands/gemini-get-model";
-import {GeminiSetModel} from "./commands/gemini-set-model";
 import {Debug} from "./commands/debug";
-import {GeminiGenerateImage} from "./commands/gemini-generate-image";
-import {YouTubeDownload} from "./commands/youtube-download";
 import fs from "node:fs";
 import path from "node:path";
-import {setInterval} from "node:timers";
-import {OpenAI} from "openai";
 import {OpenAIChat} from "./commands/openai-chat";
 import {OpenAIListModels} from "./commands/openai-list-models";
 import {OpenAIGetModel} from "./commands/openai-get-model";
 import {OpenAISetModel} from "./commands/openai-set-model";
 import {Info} from "./commands/info";
-import {OpenAIGenImage} from "./commands/openai-gen-image";
-import {clearUpFolderFromOldFiles} from "./util/files";
-import {DownloadYtVideo} from "./callback_commands/download-yt-video";
-import {YtInfo} from "./callback_commands/yt-info";
 import {AdminsList} from "./commands/admins-list";
 import {ExportDb} from "./commands/export-db";
+import {ImportDb} from "./commands/import-db";
+import {Settings} from "./commands/settings";
+import {UserSettingsCallback} from "./callback_commands/user-settings";
+import {TextToSpeech} from "./commands/text-to-speech";
+import {SpeechToText} from "./commands/speech-to-text";
+import {cleanupInternalArtifactCache} from "./ai/internal-artifact-store";
 
 process.setUncaughtExceptionCaptureCallback(logError);
 
@@ -94,42 +86,6 @@ export const userDao = new UserDao();
 
 export const bot = new TelegramBot({botToken: Environment.BOT_TOKEN, testEnvironment: Environment.TEST_ENVIRONMENT});
 export let botUser: User;
-
-export const googleAi = new GoogleGenAI({apiKey: Environment.GEMINI_API_KEY});
-export const mistralAi = new Mistral({apiKey: Environment.MISTRAL_API_KEY});
-export const openAi = new OpenAI({apiKey: Environment.OPENAI_API_KEY, baseURL: Environment.OPENAI_BASE_URL, dangerouslyAllowBrowser: true});
-
-export const ollama = new Ollama({
-    host: Environment.OLLAMA_ADDRESS,
-    headers: {"Authorization": `Bearer ${Environment.OLLAMA_API_KEY}`}
-});
-
-export const ollamaRequests: OllamaRequest[] = [];
-
-export function getOllamaRequest(uuid: string): OllamaRequest | null {
-    return ollamaRequests.find(r => r.uuid === uuid);
-}
-
-export function updateOllamaRequest(uuid: string, request: OllamaRequest) {
-    const index = ollamaRequests.findIndex(r => r.uuid === uuid);
-    if (index >= 0) {
-        ollamaRequests[index] = request;
-    }
-}
-
-export function abortOllamaRequest(uuid: string): boolean {
-    const request = getOllamaRequest(uuid);
-    if (!request || request.done) return false;
-
-    try {
-        request.stream.abort();
-        updateOllamaRequest(uuid, {...request, done: true});
-        return true;
-    } catch (e) {
-        logError(e);
-        return false;
-    }
-}
 
 export const commands: Command[] = [
     new Start(),
@@ -160,17 +116,19 @@ export const commands: Command[] = [
     new Transliteration(),
     new Debug(),
     new Info(),
+    new Settings(),
+    new TextToSpeech(),
+    new SpeechToText(),
 
     new AdminsAdd(),
     new AdminsRemove(),
     new AdminsList(),
 
     new ExportDb(),
+    new ImportDb(),
 
     new Shutdown(),
     new Leave(),
-
-    new YouTubeDownload()
 ];
 
 if (Environment.ENABLE_UNSAFE_EVAL) {
@@ -178,15 +136,14 @@ if (Environment.ENABLE_UNSAFE_EVAL) {
 }
 
 export const callbackCommands: CallbackCommand[] = [
-    new OllamaCancel(),
-    new DownloadYtVideo(),
-    new YtInfo()
+    new AiCancel(),
+    new AiRegenerate(),
+    new UserSettingsCallback(),
 ];
 
-if (Environment.OLLAMA_ADDRESS && Environment.OLLAMA_MODEL && Environment.SYSTEM_PROMPT) {
+if (Environment.OLLAMA_ADDRESS && Environment.OLLAMA_CHAT_MODEL) {
     commands.push(
         new OllamaChat(),
-        new OllamaPrompt(),
         new OllamaListModels(),
         new OllamaGetModel(),
         new OllamaSetModel()
@@ -195,16 +152,6 @@ if (Environment.OLLAMA_ADDRESS && Environment.OLLAMA_MODEL && Environment.SYSTEM
 
 if (Environment.OLLAMA_API_KEY) {
     commands.push(new OllamaSearch());
-}
-
-if (Environment.GEMINI_API_KEY) {
-    commands.push(
-        new GeminiChat(),
-        new GeminiListModels(),
-        new GeminiGetModel(),
-        new GeminiSetModel(),
-        new GeminiGenerateImage()
-    );
 }
 
 if (Environment.MISTRAL_API_KEY) {
@@ -222,29 +169,70 @@ if (Environment.OPENAI_API_KEY) {
         new OpenAIListModels(),
         new OpenAIGetModel(),
         new OpenAISetModel(),
-        new OpenAIGenImage()
     );
 }
 
 export const cacheDir = path.join(Environment.DATA_PATH, "cache");
 export const photoDir = path.join(cacheDir, "photo");
 export const photoGenDir = path.join(photoDir, "gen");
+export const documentDir = path.join(cacheDir, "document");
+export const audioDir = path.join(cacheDir, "audio");
 export const videoDir = path.join(cacheDir, "video");
+export const videoNotesDir = path.join(cacheDir, "video-note");
 export const videoTempDir = path.join(videoDir, "temp");
+
+export const filesDir = path.join(Environment.DATA_PATH, "files");
+
+export const NOTES_HEADER = "## Notes\n";
+export const notesDir = path.join(Environment.DATA_PATH, "notes");
+export const notesRootFile = path.join(notesDir, "index.md");
+
+const logger = appLogger.child("main");
 
 let isShuttingDown = false;
 
-async function shutdown(signal: NodeJS.Signals) {
+async function measureStartupStep<T>(step: string, task: () => Promise<T> | T, details?: () => LogDetails): Promise<T> {
+    const startedAt = Date.now();
+    logger.info("startup.step.start", {
+        step,
+        ...(details?.() ?? {}),
+    });
+
+    try {
+        const result = await task();
+        logger.success("startup.step.done", {
+            step,
+            duration: `${Date.now() - startedAt}ms`,
+            ...(details?.() ?? {}),
+        });
+        return result;
+    } catch (error) {
+        logger.error("startup.step.failed", {
+            step,
+            duration: `${Date.now() - startedAt}ms`,
+            ...(details?.() ?? {}),
+            error: error instanceof Error ? error : String(error),
+        });
+        throw error;
+    }
+}
+
+export async function shutdown(signal: NodeJS.Signals | "manual") {
     if (isShuttingDown) return;
     isShuttingDown = true;
 
-    console.log(`Received ${signal}. Stopping bot polling...`);
+    logger.warn("shutdown.signal", {signal});
 
     try {
         await bot.stopPolling();
     } catch (error) {
-        logError(error);
+        logError(error instanceof Error ? error : String(error));
     } finally {
+        try {
+            await DatabaseManager.close();
+        } catch (error) {
+            logError(error instanceof Error ? error : String(error));
+        }
         process.exit(0);
     }
 }
@@ -252,69 +240,71 @@ async function shutdown(signal: NodeJS.Signals) {
 async function main() {
     const start = Date.now();
 
-    await readPrompts();
+    logger.info("startup.begin", {
+        testEnvironment: Environment.TEST_ENVIRONMENT,
+        isDocker: Environment.IS_DOCKER,
+        dataPath: Environment.DATA_PATH,
+        database: Environment.databaseSummaryText,
+    });
 
-    console.log(Environment.SYSTEM_PROMPT);
-    
-    console.log(
-        `TEST_ENVIRONMENT: ${Environment.TEST_ENVIRONMENT}\n` +
-        `DATA_PATH: ${Environment.DATA_PATH}\n` +
-        `MAX_PHOTO_SIZE: ${Environment.MAX_PHOTO_SIZE}\n` +
-        `ONLY_FOR_CREATOR: ${Environment.ONLY_FOR_CREATOR_MODE}\n` +
-        `DEFAULT_AI_PROVIDER: ${Environment.DEFAULT_AI_PROVIDER}`
-    );
-
-    const dirsToCheck = [cacheDir, photoDir, photoGenDir, videoDir, videoTempDir];
-    dirsToCheck.forEach(dir => {
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir);
+    await measureStartupStep("environment.load", () => Environment.load());
+    const dirsToCheck = [cacheDir, photoDir, photoGenDir, documentDir, audioDir, videoDir, videoNotesDir, videoTempDir, notesDir, filesDir];
+    await measureStartupStep("prepare_directories", () => {
+        const created: string[] = [];
+        for (const dir of dirsToCheck) {
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, {recursive: true});
+                created.push(dir);
+            }
         }
-    });
+        return {created};
+    }, () => ({directories: dirsToCheck.length}));
 
-    const now = new Date();
+    const notesRootFilePath = path.join(notesDir, "index.md");
+    await measureStartupStep("prepare_notes_index", () => {
+        if (!fs.existsSync(notesRootFilePath)) {
+            fs.writeFileSync(notesRootFilePath, "\n" + NOTES_HEADER);
+        }
 
-    const midnight = new Date();
-    midnight.setHours(0, 0, 0, 0);
-    midnight.setDate(now.getDate() + 1);
+        if (!(fs.readFileSync(notesRootFilePath).toString().includes(NOTES_HEADER))) {
+            fs.appendFileSync(notesRootFilePath, "\n" + NOTES_HEADER);
+        }
+    }, () => ({notesRootFilePath}));
 
-    const diff = midnight.getTime() - now.getTime();
-    console.log("Clearing up cache will be started in " + diff + "ms");
+    await measureStartupStep("cleanup_internal_artifacts", () => cleanupInternalArtifactCache(), () => ({retentionDays: 14}));
 
-    clearUpFolderFromOldFiles(cacheDir);
-    delay(diff).then(() => {
-        setInterval(() => {
-            console.log("Started clearing up cache");
-            clearUpFolderFromOldFiles(cacheDir);
-        }, 1000 * 60 * 60 * 24);
-    });
-
-    const cmds = commands.filter(cmd => {
+    const cmds = await measureStartupStep("build_commands", () => commands.filter(cmd => {
         return cmd.title && cmd.title.startsWith("/") && cmd.title.split(" ").length === 1 && cmd.description;
     }).map(cmd => {
         return {
-            command: cmd.title.toLowerCase(),
+            command: cmd.title?.toLowerCase() || "",
             description: cmd.description,
         };
+    }) as BotCommand[], () => ({commands: commands.length}));
+
+    await measureStartupStep("database.ready", () => DatabaseManager.ready, () => ({database: Environment.databaseSummaryText}));
+
+    const [_, __, ___, me] = await measureStartupStep("load_runtime", () => Promise.all(
+        [
+            measureStartupStep("init_system_specs", () => initSystemSpecs()),
+            measureStartupStep("read_data", () => readData()),
+            measureStartupStep("retrieve_answers", () => retrieveAnswers()),
+            measureStartupStep("bot.getMe", () => bot.getMe()),
+            measureStartupStep("bot.setMyCommands", () => bot.setMyCommands({commands: cmds, scope: {type: "default"}})),
+        ]
+    ));
+    botUser = me;
+    await measureStartupStep("user_store.put", () => UserStore.put(botUser), () => ({botId: botUser.id}));
+    await measureStartupStep("bot.startPolling", () => bot.startPolling(), () => ({botId: botUser.id}));
+
+    const end = Date.now();
+    const diff = Math.abs(end - start);
+    logger.success("startup.ready", {
+        duration: `${diff}ms`,
+        commands: cmds.length,
+        botId: botUser.id,
+        botUsername: botUser.username
     });
-
-    try {
-        const results = await Promise.all(
-            [
-                initSystemSpecs(), readData(), retrieveAnswers(),
-                bot.getMe(),
-                bot.setMyCommands({commands: cmds, scope: {type: "default"}})
-            ]
-        );
-        botUser = results[3];
-        await UserStore.put(botUser);
-        await bot.startPolling();
-
-        const end = Date.now();
-        const diff = Math.abs(end - start);
-        console.log(`Bot started in ${diff}ms!`);
-    } catch (error) {
-        logError(error);
-    }
 }
 
 bot.on("my_chat_member", processMyChatMember);
@@ -322,6 +312,7 @@ bot.on("edited_message", processEditedMessage);
 bot.on("message", processNewMessage);
 bot.on("inline_query", processInlineQuery);
 bot.on("callback_query", processCallbackQuery);
+bot.on("guest_message", processGuestMessage);
 
 process.on("SIGTERM", () => {
     shutdown("SIGTERM").catch(logError);
@@ -331,4 +322,7 @@ process.on("SIGINT", () => {
     shutdown("SIGINT").catch(logError);
 });
 
-main().catch(logError);
+main().catch(error => {
+    logError(error);
+    process.exit(1);
+});

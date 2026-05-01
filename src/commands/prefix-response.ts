@@ -5,6 +5,6 @@ import {Environment} from "../common/environment";
 
 export class PrefixResponse extends Command {
     async execute(msg: Message): Promise<void> {
-        await replyToMessage({message: msg, text: randomValue(Environment.ANSWERS.prefix)}).catch(logError);
+        await replyToMessage({message: msg, text: randomValue(Environment.ANSWERS.prefix) ?? Environment.prefixFallbackText}).catch(logError);
     }
 }

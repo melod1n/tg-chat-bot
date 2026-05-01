@@ -17,9 +17,15 @@ import {
 import {Requirements} from "../base/requirements";
 import {Requirement} from "../base/requirement";
 import twemoji from "twemoji";
+import {enqueueTelegramApiCall} from "../util/telegram-api-queue";
+import {AsyncSemaphore} from "../util/async-lock";
+import {Environment} from "../common/environment";
+import {getLruMapValue, setLruMapValue} from "../util/lru-map";
+import {appLogger} from "../logging/logger";
+
+const logger = appLogger.child("command:quote");
 
 try {
-    GlobalFonts.registerFromPath("./assets/Inter_18pt-ExtraThin.ttf", "InterExtraThin");
     GlobalFonts.registerFromPath("./assets/Inter_18pt-Thin.ttf", "InterThin");
     GlobalFonts.registerFromPath("./assets/Inter_18pt-Light.ttf", "InterLight");
     GlobalFonts.registerFromPath("./assets/Inter_18pt-Regular.ttf", "Inter");
@@ -33,50 +39,60 @@ try {
     GlobalFonts.registerFromPath("./assets/JetBrainsMono-Italic.ttf", "JetBrainsMonoItalic");
     GlobalFonts.registerFromPath("./assets/JetBrainsMono-Regular.ttf", "JetBrainsMonoRegular");
 } catch (e) {
-    logError(e);
+    logError(e instanceof Error ? e : String(e));
 }
 
 export class Quote extends Command {
     command = ["cit", "citation", "q", "quote"];
     argsMode = "none" as const;
 
-    title = "/quote";
-    description = "Make quote from text (or quote)";
+    title = Environment.commandTitles.quote;
+    description = Environment.commandDescriptions.quote;
 
     requirements = Requirements.Build(Requirement.REPLY);
 
     async execute(msg: Message): Promise<void> {
         const chatId = msg.chat.id;
         const reply = msg.reply_to_message;
+        if (!reply) return;
 
         try {
+            const startedAt = Date.now();
+            logger.debug("execute.start", {chatId, messageId: msg.message_id, replyMessageId: reply.message_id});
             const quoteRaw = (msg.quote?.text ?? reply.text ?? reply.caption ?? "").trim();
             if (quoteRaw.length === 0) {
-                await replyToMessage({message: msg, text: "Не нашёл в сообщении текста 😢"}).catch(logError);
+                await replyToMessage({message: msg, text: Environment.quoteMissingTextText}).catch(logError);
                 return;
             }
 
             const quote = quoteRaw.length ? quoteRaw : "…";
 
-            const entities = msg.quote ? msg.quote.entities : reply.entities ?? reply.caption_entities ?? [];
+            const entities = msg.quote ? msg.quote.entities ?? [] : reply.entities ?? reply.caption_entities ?? [];
 
-            const png = await renderQuoteCard(msg, quote, reply, entities);
-            await bot.sendPhoto({
-                chat_id: chatId,
-                photo: png,
-                reply_parameters: {
-                    message_id: msg.message_id,
-                },
-            }).catch(logError);
+            const png = await quoteRenderSemaphore.runExclusive(() => renderQuoteCard(msg, quote, reply, entities));
+            await enqueueTelegramApiCall(
+                () => bot.sendPhoto({
+                    chat_id: chatId,
+                    photo: png,
+                    reply_parameters: {
+                        message_id: msg.message_id,
+                    },
+                }),
+                {method: "sendPhoto", chatId, chatType: msg.chat.type}
+            );
+            logger.debug("execute.done", {chatId, messageId: msg.message_id, bytes: png.length, duration: logger.duration(startedAt)});
         } catch (e) {
-            logError(e);
-            await replyToMessage({message: msg, text: "Не смог собрать цитату 😢"}).catch(logError);
+            logError(e instanceof Error ? e : String(e));
+            await replyToMessage({message: msg, text: Environment.quoteBuildFailedText}).catch(logError);
         }
     }
 }
 
 const emojiCache = new Map<string, CanvasImage>();
 const customEmojiCache = new Map<string, CanvasImage>();
+const quoteRenderSemaphore = new AsyncSemaphore(2);
+const EMOJI_CACHE_MAX_ENTRIES = 256;
+const CUSTOM_EMOJI_CACHE_MAX_ENTRIES = 512;
 
 function appleEmojiUrl(emoji: string): string {
     const codePoints = [...emoji]
@@ -97,17 +113,19 @@ function twemojiUrl(emoji: string) {
     return `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/${code}.png`;
 }
 
-async function loadEmoji(emoji: string): Promise<CanvasImage> {
+async function loadEmoji(emoji: string | undefined): Promise<CanvasImage | null> {
+    if (!emoji) return null;
+
     const downloadAndCache = async (url: string): Promise<Image> => {
         const res = await axios.get<ArrayBuffer>(url, {responseType: "arraybuffer"});
         const img = await loadImage(Buffer.from(res.data));
-        emojiCache.set(url, img);
+        setLruMapValue(emojiCache, url, img, EMOJI_CACHE_MAX_ENTRIES);
         return img;
     };
 
     const checkIfCached = async (emoji: string, emojiToUrl: (emoji: string) => string): Promise<CanvasImage> => {
         const url = emojiToUrl(emoji);
-        const cached = emojiCache.get(url);
+        const cached = getLruMapValue(emojiCache, url);
         if (cached) return cached;
         return await downloadAndCache(emojiToUrl(emoji));
     };
@@ -117,7 +135,7 @@ async function loadEmoji(emoji: string): Promise<CanvasImage> {
         try {
             return await checkIfCached(emoji, source);
         } catch (e) {
-            logError(e);
+            logError(e instanceof Error ? e : String(e));
         }
     }
 
@@ -125,7 +143,7 @@ async function loadEmoji(emoji: string): Promise<CanvasImage> {
 }
 
 async function loadCustomEmoji(customEmojiId: string): Promise<CanvasImage | null> {
-    const cached = customEmojiCache.get(customEmojiId);
+    const cached = getLruMapValue(customEmojiCache, customEmojiId);
     if (cached) return cached;
 
     try {
@@ -134,14 +152,14 @@ async function loadCustomEmoji(customEmojiId: string): Promise<CanvasImage | nul
         });
 
         if (!stickerSet || stickerSet.length === 0) {
-            console.warn(`Custom emoji ${customEmojiId} not found`);
+            logger.warn("custom_emoji.not_found", {customEmojiId});
             return null;
         }
 
         const sticker = stickerSet[0];
 
         if (sticker.is_animated || sticker.is_video) {
-            console.warn(`Animated/video custom emoji ${customEmojiId} not supported`);
+            logger.warn("custom_emoji.unsupported", {customEmojiId});
             return loadEmoji(sticker.emoji);
         }
 
@@ -152,14 +170,14 @@ async function loadCustomEmoji(customEmojiId: string): Promise<CanvasImage | nul
         try {
             buffer = await sharp(buffer).png().toBuffer();
         } catch (e) {
-            logError(e);
+            logError(e instanceof Error ? e : String(e));
         }
 
         const img = await loadImage(buffer);
-        customEmojiCache.set(customEmojiId, img);
+        setLruMapValue(customEmojiCache, customEmojiId, img, CUSTOM_EMOJI_CACHE_MAX_ENTRIES);
         return img;
     } catch (e) {
-        console.warn(`Failed to load custom emoji ${customEmojiId}:`, e);
+        logger.warn("custom_emoji.load_failed", {customEmojiId, error: e instanceof Error ? e : String(e)});
         return null;
     }
 }
@@ -491,9 +509,9 @@ async function drawLine(ctx: SKRSContext2D, line: Segment[], x: number, baseline
             try {
                 const img = await loadEmoji(seg.v);
                 const y = baselineY - emojiSize + Math.round(fontSize * 0.2);
-                ctx.drawImage(img, cx, y, emojiSize, emojiSize);
+                ctx.drawImage(<Image>img, cx, y, emojiSize, emojiSize);
             } catch (e) {
-                logError(e);
+                logError(e instanceof Error ? e : String(e));
                 ctx.fillText(seg.v, cx, baselineY);
             }
             cx += emojiSize;
@@ -506,17 +524,17 @@ async function drawLine(ctx: SKRSContext2D, line: Segment[], x: number, baseline
                 } else {
                     const img = await loadEmoji("😥");
                     const y = baselineY - emojiSize + Math.round(fontSize * 0.2);
-                    ctx.drawImage(img, cx, y, emojiSize, emojiSize);
+                    ctx.drawImage(<Image>img, cx, y, emojiSize, emojiSize);
                 }
             } catch (e) {
-                console.warn("Failed to draw custom emoji:", e);
+                logger.warn("custom_emoji.draw_failed", {error: e instanceof Error ? e : String(e)});
 
                 try {
                     const img = await loadEmoji("😥");
                     const y = baselineY - emojiSize + Math.round(fontSize * 0.2);
-                    ctx.drawImage(img, cx, y, emojiSize, emojiSize);
+                    ctx.drawImage(<Image>img, cx, y, emojiSize, emojiSize);
                 } catch (e) {
-                    logError(e);
+                    logError(e instanceof Error ? e : String(e));
 
                     ctx.fillText(":-(", cx, baselineY);
                 }

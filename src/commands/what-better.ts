@@ -7,8 +7,8 @@ export class WhatBetter extends Command {
     command = ["what", "что"];
     argsMode = "required" as const;
 
-    title = "/what better [a] or [b]";
-    description = "either a or b randomly (50% chance)";
+    title = Environment.commandTitles.whatBetter;
+    description = Environment.commandDescriptions.whatBetter;
 
     private argsRe = /^(better|лучше)\s+([\s\S]+?)\s+(or|или)\s+([\s\S]+)$/i;
 
@@ -19,7 +19,7 @@ export class WhatBetter extends Command {
         const a = m[2].trim();
         const b = m[4].trim();
 
-        const text = `${randomValue(Environment.ANSWERS.better)} ${randomValue([a, b])}`;
+        const text = `${randomValue(Environment.ANSWERS.better) ?? Environment.betterFallbackText} ${randomValue([a, b]) ?? a}`;
 
         await oldSendMessage(msg, text).catch(logError);
     }

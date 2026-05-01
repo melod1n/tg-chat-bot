@@ -6,6 +6,8 @@ import {Environment} from "../common/environment";
 import fs from "node:fs";
 import {logError, replyToMessage, sendErrorPlaceholder} from "../util/utils";
 import {bot} from "../index";
+import {enqueueTelegramApiCall} from "../util/telegram-api-queue";
+import {DatabaseManager, type DatabaseBackupArtifact} from "../db/database-manager";
 
 export class ExportDb extends Command {
 
@@ -16,27 +18,37 @@ export class ExportDb extends Command {
     requirements = Requirements.Build(Requirement.BOT_CREATOR);
 
     async execute(msg: Message): Promise<void> {
-        const fullPath = Environment.DB_PATH.substring(5);
-        if (!fs.existsSync(fullPath)) {
-            await sendErrorPlaceholder(msg);
-            return;
-        }
-
+        let backups: DatabaseBackupArtifact[] = [];
         try {
-            const buffer = fs.readFileSync(fullPath);
+            backups = await DatabaseManager.exportBackupArtifacts();
+            if (!backups.length) {
+                throw new Error("Database backup artifacts were not created.");
+            }
 
-            await bot.sendDocument({
-                chat_id: Environment.CREATOR_ID,
-                document: new FileOptions(buffer, {filename: "database.db", contentType: "application/sql"}),
-                caption: "Бэкап базы данных",
-            });
+            for (const backup of backups) {
+                await enqueueTelegramApiCall(
+                    () => bot.sendDocument({
+                        chat_id: Environment.CREATOR_ID,
+                        document: new FileOptions(
+                            fs.createReadStream(backup.filePath),
+                            {filename: backup.fileName, contentType: backup.contentType},
+                        ),
+                        caption: Environment.databaseBackupCaption,
+                    }),
+                    {method: "sendDocument", chatId: Environment.CREATOR_ID, chatType: "private"}
+                );
+            }
 
             if (msg.chat.id !== Environment.CREATOR_ID) {
-                await replyToMessage({message: msg, text: "Успешно отправлено в ЛС создателю!"});
+                await replyToMessage({message: msg, text: Environment.databaseBackupSentText});
             }
         } catch (e) {
-            logError(e);
+            logError(e instanceof Error ? e : String(e));
             await sendErrorPlaceholder(msg);
+        } finally {
+            for (const backup of backups) {
+                await backup.cleanup();
+            }
         }
     }
 }

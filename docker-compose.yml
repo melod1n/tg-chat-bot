@@ -1,8 +1,10 @@
 services:
  tgchatbot:
     container_name: tgchatbot
-    image: ghcr.io/melod1n/tg-chat-bot:latest
+    image: ghcr.io/melod1n/tg-chat-bot:${IMAGE_TAG:-1.0.0}
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       - PUID=1000
       - PGID=1000

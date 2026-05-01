@@ -7,8 +7,8 @@ import {botUser} from "../index";
 import {Environment} from "../common/environment";
 
 export class Unignore extends Command {
-    title = "/unignore";
-    description = "Bot will start responding to the user";
+    title = Environment.commandTitles.unignore;
+    description = Environment.commandDescriptions.unignore;
     requirements = Requirements.Build(
         Requirement.BOT_ADMIN,
         Requirement.CHAT,
@@ -18,25 +18,25 @@ export class Unignore extends Command {
     );
 
     async execute(msg: Message) {
-        if (!msg.reply_to_message) return;
+        if (!msg.reply_to_message || !msg.reply_to_message.from) return;
 
         const id = msg.reply_to_message.from.id;
         const text = fullName(msg.reply_to_message.from);
 
         if (id === botUser.id) {
-            await oldSendMessage(msg, "Бот и так всегда к себе прислушивается").catch(logError);
+            await oldSendMessage(msg, Environment.botAlreadyAlwaysListensToItselfText).catch(logError);
             return;
         }
 
         if (id === Environment.CREATOR_ID) {
-            await oldSendMessage(msg, "Бот всегда слушает своего создателя").catch(logError);
+            await oldSendMessage(msg, Environment.botAlwaysListensToCreatorText).catch(logError);
             return;
         }
 
         if (await Environment.removeMute(id)) {
-            await oldSendMessage(msg, text + " больше не в муте! 🔈").catch(logError);
+            await oldSendMessage(msg, Environment.getUserUnignoredText(text)).catch(logError);
         } else {
-            await oldSendMessage(msg, text + " не был в муте 🤔").catch(logError);
+            await oldSendMessage(msg, Environment.getUserWasNotIgnoredText(text)).catch(logError);
         }
     }
 }

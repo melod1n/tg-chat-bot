@@ -1,9 +1,10 @@
 import {CallbackCommand} from "../base/callback-command";
+import {Environment} from "../common/environment";
 
 export class Cancel extends CallbackCommand {
 
-    text = "❌ Отменить";
-    data = null;
+    text = Environment.cancelText;
+    data = "";
 
     constructor(text?: string, data?: string) {
         super();
@@ -13,7 +14,7 @@ export class Cancel extends CallbackCommand {
     }
 
     static withData(data?: string): Cancel {
-        return new Cancel(null, data);
+        return new Cancel(undefined, data);
     }
 
     async execute(): Promise<void> {

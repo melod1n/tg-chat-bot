@@ -2,13 +2,15 @@ import {Command} from "../base/command";
 import {Message} from "typescript-telegram-bot-api";
 import {downloadTelegramFile, extractImageFileId, logError, oldReplyToMessage, waveDistortSharp} from "../util/utils";
 import {bot} from "../index";
+import {enqueueTelegramApiCall} from "../util/telegram-api-queue";
+import {Environment} from "../common/environment";
 
 export class Distort extends Command {
     command = "distort";
     argsMode = "optional" as const;
 
-    title = "/distort [amp] [wavelength]";
-    description = "Distortion of picture";
+    title = Environment.commandTitles.distort;
+    description = Environment.commandDescriptions.distort;
 
     async execute(msg: Message, match?: RegExpExecArray): Promise<void> {
         const chatId = msg.chat.id;
@@ -17,7 +19,7 @@ export class Distort extends Command {
         if (!reply) {
             await oldReplyToMessage(
                 msg,
-                "Ответь командой /distort на сообщение с картинкой (фото, документ или стикер).\n" + "Пример: /distort 16 80"
+                Environment.distortReplyInstructionText
             );
             return;
         }
@@ -26,7 +28,7 @@ export class Distort extends Command {
         if (!fileId) {
             await oldReplyToMessage(
                 msg,
-                "В реплае не вижу картинку. Пришли фото или файл-изображение."
+                Environment.distortMissingImageText
             );
             return;
         }
@@ -37,7 +39,10 @@ export class Distort extends Command {
         const wavelength = b ? Number(b) : 72;
 
         try {
-            await bot.sendChatAction({chat_id: chatId, action: "upload_photo"});
+            await enqueueTelegramApiCall(
+                () => bot.sendChatAction({chat_id: chatId, action: "upload_photo"}),
+                {method: "sendChatAction", chatId, chatType: msg.chat.type}
+            );
 
             const file = await bot.getFile({file_id: fileId});
             if (!file.file_path) {
@@ -47,16 +52,19 @@ export class Distort extends Command {
 
             const inputBuf = await downloadTelegramFile(file.file_path);
 
-            const outBuf = await waveDistortSharp(inputBuf, amp, wavelength);
+            const outBuf = await waveDistortSharp(<Buffer>inputBuf, amp, wavelength);
 
-            await bot.sendPhoto({
-                chat_id: chatId,
-                photo: outBuf,
-                caption: `Искажение готово ✅ (amp=${amp}, wavelength=${wavelength})`,
-            });
-        } catch (e) {
+            await enqueueTelegramApiCall(
+                () => bot.sendPhoto({
+                    chat_id: chatId,
+                    photo: outBuf,
+                    caption: Environment.getDistortionReadyCaption(amp, wavelength),
+                }),
+                {method: "sendPhoto", chatId, chatType: msg.chat.type}
+            );
+        } catch (error) {
             await oldReplyToMessage(
-                msg, `Не получилось исказить изображение: ${e?.message ?? String(e)}`
+                msg, Environment.getDistortFailedText(error instanceof Error ? error : String(error))
             ).catch(logError);
         }
     }

@@ -5,10 +5,10 @@ import {Environment} from "../common/environment";
 
 export class Test extends Command {
     regexp = /^(test|тест|еуые|ntcn|инноке(нтий|ш|нтич))$/i;
-    title = "тест";
-    description = "System functionality check";
+    title = Environment.commandTitles.test;
+    description = Environment.commandDescriptions.test;
 
     async execute(msg: Message) {
-        await oldReplyToMessage(msg, randomValue(Environment.ANSWERS.test) || "а").catch(logError);
+        await oldReplyToMessage(msg, randomValue(Environment.ANSWERS.test) || Environment.defaultTestAnswerText).catch(logError);
     }
 }

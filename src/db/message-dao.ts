@@ -1,110 +1,182 @@
-import {MessageInsert, messagesTable} from "./schema";
 import {DatabaseManager} from "./database-manager";
 import {StoredMessage} from "../model/stored-message";
-import {and, eq} from "drizzle-orm";
-import {inArray} from "drizzle-orm/sql/expressions/conditions";
 import {Dao} from "../base/dao";
-import {buildExcludedSet} from "../util/utils";
+import {appLogger} from "../logging/logger";
+import {StoredAttachment} from "../model/stored-attachment";
+import {MessageDbRow} from "./db-types";
+import type {PipelineAuditEvent} from "../ai/user-request-pipeline";
 
-export class MessageDao extends Dao<StoredMessage> {
+export class MessageDao extends Dao<StoredMessage, {chatId: number; id: number}, {chatId: number; ids: number[]}, MessageDbRow[]> {
 
-    private tag: string = "MessageDao";
+    private readonly logger = appLogger.child("dao:messages");
 
     override async getAll(): Promise<StoredMessage[]> {
         const then = Date.now();
 
-        const messages = await DatabaseManager.db.select().from(messagesTable);
+        const messages = await DatabaseManager.getAllMessages();
+        const hydrated = await this.hydrateMissingMessageData(messages);
 
         const now = Date.now();
         const diff = now - then;
-        console.log(`${this.tag}: getAll()`, `took ${diff}ms; size: ${messages.length}`);
+        this.logger.trace("get_all", {dao: "messages", duration: `${diff}ms`, size: hydrated.length});
 
-        return this.mapFrom(messages);
+        return this.mapFrom(hydrated);
     }
 
     override async getById(params: { chatId: number, id: number }): Promise<StoredMessage | null> {
         const then = Date.now();
 
-        const messages =
-            await DatabaseManager.db.select()
-                .from(messagesTable)
-                .where(
-                    and(
-                        eq(messagesTable.chatId, params.chatId),
-                        eq(messagesTable.id, params.id)
-                    )
-                );
+        const message = await DatabaseManager.getMessageById(params.chatId, params.id);
+        const hydrated = await this.hydrateMissingMessageData(message ? [message] : []);
 
         const now = Date.now();
         const diff = now - then;
-        console.log(`${this.tag}: getById(${params.chatId}, ${params.id})`, `took ${diff}ms; size: ${messages.length}`);
+        this.logger.trace("get_by_id", {dao: "messages", chatId: params.chatId, id: params.id, duration: `${diff}ms`, size: hydrated.length});
 
-        const m = messages[0];
-        if (!m) return null;
-        return this.mapFrom([m])[0];
+        if (!hydrated.length) return null;
+        return this.mapFrom(hydrated)[0];
     }
 
     override async getByIds(params: { chatId: number, ids: number[] }): Promise<StoredMessage[]> {
         const then = Date.now();
 
-        const messages =
-            await DatabaseManager.db.select()
-                .from(messagesTable)
-                .where(
-                    and(
-                        eq(messagesTable.chatId, params.chatId),
-                        inArray(messagesTable.id, params.ids)
-                    )
-                );
+        const messages = await DatabaseManager.getMessagesByIds(params.chatId, params.ids);
+        const hydrated = await this.hydrateMissingMessageData(messages);
 
         const now = Date.now();
         const diff = now - then;
-        console.log(`${this.tag}: getByIds(${params.chatId}, ${params.ids})`, `took ${diff}ms; size: ${messages.length}`);
+        this.logger.trace("get_by_ids", {dao: "messages", chatId: params.chatId, ids: params.ids, duration: `${diff}ms`, size: hydrated.length});
 
-        return this.mapFrom(messages);
+        return this.mapFrom(hydrated);
     }
 
-    async insert(values: MessageInsert[]): Promise<true> {
+    async insert(values: MessageDbRow[]): Promise<true> {
+        if (!values.length) return true;
+
         const then = Date.now();
-        const r = await DatabaseManager.db
-            .insert(messagesTable)
-            .values(values)
-            .onConflictDoUpdate({
-                target: messagesTable.id,
-                set: buildExcludedSet(messagesTable, ["id"])
-            });
+        await DatabaseManager.upsertMessages(values);
 
         const now = Date.now();
         const diff = now - then;
-        console.log(`${this.tag}: insert(size: ${values.length})`, `took ${diff}ms'; inserted: ${r.rowsAffected}`);
+        this.logger.debug("insert", {dao: "messages", duration: `${diff}ms`, size: values.length});
         return true;
     }
 
-    mapStoredTo(messages: StoredMessage[]): MessageInsert[] {
+    mapStoredTo(messages: StoredMessage[]): MessageDbRow[] {
         return messages.map(msg => {
             return {
                 chatId: msg.chatId,
                 id: msg.id,
-                replyToMessageId: msg.replyToMessageId,
+                replyToMessageId: msg.replyToMessageId ?? null,
                 fromId: msg.fromId,
-                text: msg.text,
+                text: msg.text ?? null,
+                quoteText: msg.quoteText ?? null,
                 date: msg.date,
-                photoMaxSizeFilePath: msg.photoMaxSizeFilePath?.join(";"),
+                deletedByBotAt: msg.deletedByBotAt ?? null,
+                attachments: msg.attachments?.length ? JSON.stringify(msg.attachments) : null,
+                pipelineAudit: msg.pipelineAudit?.length ? JSON.stringify(msg.pipelineAudit) : null,
             };
         });
     }
 
-    mapFrom(messages: MessageInsert[]): StoredMessage[] {
+    mapFrom(messages: MessageDbRow[]): StoredMessage[] {
         return messages.map(m => {
             return {
                 chatId: m.chatId,
                 id: m.id,
-                replyToMessageId: m.replyToMessageId,
+                replyToMessageId: m.replyToMessageId || undefined,
                 fromId: m.fromId,
                 text: m.text,
+                quoteText: m.quoteText,
                 date: m.date,
-                photoMaxSizeFilePath: m.photoMaxSizeFilePath?.split(";")
+                deletedByBotAt: m.deletedByBotAt,
+                attachments: parseAttachments(m.attachments),
+                pipelineAudit: parsePipelineAudit(m.pipelineAudit),
             };
         });
+    }
+
+    private async hydrateMissingMessageData(messages: MessageDbRow[]): Promise<MessageDbRow[]> {
+        if (!messages.length) return [];
+
+        return await Promise.all(messages.map(async message => {
+            if (message.attachments?.trim() && message.pipelineAudit?.trim()) return message;
+
+            const [attachments, audits] = await Promise.all([
+                message.attachments?.trim() ? Promise.resolve(null) : DatabaseManager.getAttachmentsByMessage(message.chatId, message.id),
+                message.pipelineAudit?.trim() ? Promise.resolve(null) : DatabaseManager.getRequestAuditsByMessage(message.chatId, message.id),
+            ]);
+            const normalizedAttachments = attachments ?? [];
+            const normalizedAudits = audits ?? [];
+
+            return {
+                ...message,
+                attachments: message.attachments ?? (normalizedAttachments.length ? JSON.stringify(normalizedAttachments.map(row => attachmentFromRow(row))) : null),
+                pipelineAudit: message.pipelineAudit ?? (normalizedAudits.length ? JSON.stringify(normalizedAudits.map(row => auditFromRow(row))) : null),
+            };
+        }));
+    }
+}
+
+function parsePipelineAudit(value?: string | null): PipelineAuditEvent[] | undefined {
+    if (!value?.trim()) return undefined;
+
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function parseAttachments(value?: string | null): StoredAttachment[] | undefined {
+    if (!value?.trim()) return undefined;
+
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+function attachmentFromRow(row: Awaited<ReturnType<typeof DatabaseManager.getAttachmentsByMessage>>[number]): StoredAttachment {
+    return {
+        kind: row.kind as StoredAttachment["kind"],
+        fileId: row.fileId,
+        fileUniqueId: row.fileUniqueId ?? undefined,
+        fileName: row.fileName,
+        mimeType: row.mimeType ?? undefined,
+        cachePath: row.cachePath,
+        sizeBytes: row.sizeBytes ?? undefined,
+        sha256: row.sha256 ?? undefined,
+        scope: row.scope as StoredAttachment["scope"] | undefined,
+        artifactKind: row.artifactKind as StoredAttachment["artifactKind"] | undefined,
+        metadata: parseJsonObject(row.metadata),
+    };
+}
+
+function auditFromRow(row: Awaited<ReturnType<typeof DatabaseManager.getRequestAuditsByMessage>>[number]): NonNullable<StoredMessage["pipelineAudit"]>[number] {
+    return {
+        stage: row.stage as NonNullable<StoredMessage["pipelineAudit"]>[number]["stage"],
+        status: row.status as NonNullable<StoredMessage["pipelineAudit"]>[number]["status"],
+        startedAt: row.startedAt ?? undefined,
+        finishedAt: row.finishedAt ?? undefined,
+        durationMs: row.durationMs ?? undefined,
+        provider: row.provider as NonNullable<StoredMessage["pipelineAudit"]>[number]["provider"],
+        model: row.model ?? undefined,
+        details: parseJsonObject(row.details),
+        error: row.error ?? undefined,
+    };
+}
+
+function parseJsonObject(value?: string | null): Record<string, unknown> | undefined {
+    if (!value?.trim()) return undefined;
+
+    try {
+        const parsed = JSON.parse(value);
+        return typeof parsed === "object" && parsed !== null ? parsed as Record<string, unknown> : undefined;
+    } catch {
+        return undefined;
     }
 }

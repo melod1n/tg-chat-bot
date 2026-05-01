@@ -15,3 +15,9 @@ export enum ImageHandleFallbackPolicy {
     IGNORE_USER = "IGNORE_USER",
     USE_OLLAMA = "USE_OLLAMA",
 }
+
+export enum ToolRankerFallbackPolicy {
+    MAIN_MODEL = "MAIN_MODEL",
+    ALL_TOOLS = "ALL_TOOLS",
+    NO_TOOLS = "NO_TOOLS",
+}
