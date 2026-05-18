@@ -4,6 +4,7 @@ import type {TelegramStreamMessage} from "./telegram-stream-message.js";
 import type {RuntimeConfigSnapshot} from "./unified-ai-runner.shared.js";
 import {allToolSchemaNames, toolSchemaNames} from "./tool-schema-utils.js";
 import type {ToolRanker} from "./unified-ai-runner.tool-ranker.js";
+import type {PipelineAuditEvent} from "./user-request-pipeline/types.js";
 
 function latestUserText(messages: readonly { role?: string; content?: unknown }[]): string {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -53,11 +54,48 @@ export async function runToolRankStage(params: {
     const toolRanker = params.toolRanker ?? new (await import("./unified-ai-runner.tool-ranker.js")).ToolRanker(params.config);
     const startedAt = Date.now();
     const startedAtIso = new Date().toISOString();
-    const storeAudit = params.storeAudit ?? (await import("./tool-rank-audit.js")).storeToolRankAudit;
     const filterSelectedTools = (selectedToolNames: readonly string[]): BoundaryValue[] => {
         const selected = new Set(selectedToolNames);
         return params.availableTools.filter(tool => toolSchemaNames(tool).some(name => selected.has(name)));
     };
+    const storeAudit = params.storeAudit ?? (async (auditParams: {
+        streamMessage: TelegramStreamMessage;
+        provider: AiProvider;
+        model: string;
+        round: number;
+        startedAt: number;
+        startedAtIso: string;
+        availableTools: string[];
+        selectedTools?: string[];
+        usedRanker?: boolean;
+        error?: unknown;
+    }) => {
+        const event: PipelineAuditEvent = {
+            stage: "tool_rank",
+            status: auditParams.error ? "failed" : "succeeded",
+            startedAt: auditParams.startedAtIso,
+            finishedAt: new Date().toISOString(),
+            durationMs: Date.now() - auditParams.startedAt,
+            provider: auditParams.provider,
+            model: auditParams.model,
+            details: {
+                round: auditParams.round,
+                availableTools: auditParams.availableTools,
+                selectedTools: auditParams.selectedTools ?? [],
+                usedRanker: auditParams.usedRanker ?? false,
+                toolRankDecision: {
+                    provider: auditParams.provider,
+                    round: auditParams.round,
+                    availableTools: auditParams.availableTools,
+                    selectedTools: auditParams.selectedTools ?? [],
+                    usedRanker: auditParams.usedRanker ?? false,
+                },
+            },
+            error: auditParams.error instanceof Error ? auditParams.error.message : auditParams.error ? String(auditParams.error) : undefined,
+        };
+
+        await auditParams.streamMessage.storePipelineAudit([event]);
+    });
 
     params.streamMessage.setStatus("🧩 Выбираю подходящие инструменты...");
     await params.streamMessage.flush();

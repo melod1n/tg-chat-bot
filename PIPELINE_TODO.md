@@ -71,7 +71,7 @@
 - [x] Добавить stage `filter_tools`, который фильтрует provider-specific tools по результату ranker.
 - [x] Хранить `ToolRankDecision` в `UserRequestPipelineState.toolRankDecisions`.
 - [x] Сохранять `ToolRankDecision` в `request_audit.details`.
-- [ ] Убрать дублирующий ручной `tool-rank-audit.ts`, если stage полностью заменит его.
+- [x] Убрать дублирующий ручной `tool-rank-audit.ts`, если stage полностью заменит его.
 - [x] Сохранить status UX: `🧩 Выбираю подходящие инструменты...`.
 - [x] Гарантировать `clearStatus()` после ranker success/failure.
 - [ ] Добавить fallback через `PipelineFallbackExecutor`: main model, all tools, no tools.
