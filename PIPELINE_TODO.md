@@ -82,8 +82,8 @@
 - [ ] Stage `model_call` должен делать только один model request.
 - [x] Stage `model_call` должен возвращать normalized model output.
 - [x] Stage `tool_loop` должен решать, есть ли tool calls.
-- [ ] Stage `tool_loop` должен выполнять tools через общий `executeToolBatch`.
-- [ ] Stage `tool_loop` должен добавлять tool results в provider adapter.
+- [x] Stage `tool_loop` должен выполнять tools через общий `executeToolBatch`.
+- [x] Stage `tool_loop` должен добавлять tool results в provider adapter.
 - [ ] Stage `tool_loop` должен управлять max rounds.
 - [ ] Stage `tool_loop` должен сохранять tool result artifacts.
 - [x] Stage `tool_loop` должен уметь завершаться без tools как `skipped`.

@@ -9,7 +9,6 @@ import {getProviderAdapter} from "./provider-adapters";
 import {runToolRankStage} from "./tool-rank-stage";
 
 import {
-    executeToolBatch,
     MAX_TOOL_ROUNDS,
     MistralDocumentReference,
     roundStatus,
@@ -18,6 +17,7 @@ import {
     ToolCallData,
     ToolExecutionMemory
 } from "./unified-ai-runner.shared";
+import {executeToolBatchWithAdapter} from "./tool-batch-runner";
 import {Message} from "typescript-telegram-bot-api";
 
 export async function runMistral(
@@ -102,9 +102,15 @@ export async function runMistral(
                         function: {name: call.name, arguments: call.argumentsText},
                     })),
                 });
-                const toolResults = await executeToolBatch(msg.from?.id, calls, streamMessage, toolContext, toolMemory);
-                adapter.appendToolResults(messages, calls, toolResults);
-                adapter.appendToolResults(requestMessages, calls, toolResults);
+                await executeToolBatchWithAdapter({
+                    userId: msg.from?.id,
+                    toolCalls: calls,
+                    streamMessage,
+                    toolContext,
+                    toolMemory,
+                    adapter,
+                    appendTargets: [messages, requestMessages],
+                });
                 continue;
             }
 
@@ -153,9 +159,15 @@ export async function runMistral(
                 content: roundText,
                 toolCalls: calls.map(c => ({id: c.id, function: {name: c.name, arguments: c.argumentsText}}))
             });
-            const toolResults = await executeToolBatch(msg.from?.id, calls, streamMessage, toolContext, toolMemory);
-            adapter.appendToolResults(messages, calls, toolResults);
-            adapter.appendToolResults(requestMessages, calls, toolResults);
+            await executeToolBatchWithAdapter({
+                userId: msg.from?.id,
+                toolCalls: calls,
+                streamMessage,
+                toolContext,
+                toolMemory,
+                adapter,
+                appendTargets: [messages, requestMessages],
+            });
         }
     } finally {
         await adapter.finalize().catch(() => undefined);

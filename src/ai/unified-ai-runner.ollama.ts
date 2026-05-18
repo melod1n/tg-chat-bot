@@ -20,7 +20,6 @@ import {
     allToolSchemaNames,
     dedupeToolCalls,
     DEFAULT_OLLAMA_CONTEXT_SIZE,
-    executeToolBatch,
     isOllamaModelActive,
     isRecord,
     MAX_OLLAMA_CONTEXT_SIZE,
@@ -33,6 +32,7 @@ import {
     ToolCallData,
     ToolExecutionMemory
 } from "./unified-ai-runner.shared";
+import {executeToolBatchWithAdapter} from "./tool-batch-runner";
 import {getToolPrompts} from "./tools/registry";
 import {GetNoteFileResult, GetNoteFileResultSchema} from "./tools/notes";
 import {getModelCapabilities} from "./provider-model-runtime";
@@ -286,7 +286,15 @@ export async function runOllama(
                     })),
                 });
 
-                adapter.appendToolResults(messages, calls, await executeToolBatch(msg.from?.id, calls, streamMessage, toolContext, toolMemory));
+                await executeToolBatchWithAdapter({
+                    userId: msg.from?.id,
+                    toolCalls: calls,
+                    streamMessage,
+                    toolContext,
+                    toolMemory,
+                    adapter,
+                    appendTargets: [messages],
+                });
 
                 continue;
             }
@@ -396,7 +404,15 @@ export async function runOllama(
                 })),
             });
 
-            const toolResults = await executeToolBatch(msg.from?.id, calls, streamMessage, toolContext, toolMemory);
+            const toolResults = await executeToolBatchWithAdapter({
+                userId: msg.from?.id,
+                toolCalls: calls,
+                streamMessage,
+                toolContext,
+                toolMemory,
+                adapter,
+                appendTargets: [messages],
+            });
 
             let successGetNoteFileResult: GetNoteFileResult | undefined = undefined;
 
@@ -428,7 +444,6 @@ export async function runOllama(
                 }).catch(logError);
             }
 
-            adapter.appendToolResults(messages, calls, toolResults);
         }
     } finally {
         if (interval) clearInterval(interval);
