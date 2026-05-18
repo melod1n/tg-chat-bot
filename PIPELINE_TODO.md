@@ -99,7 +99,7 @@
 - [x] Для `continue_without_stage` писать короткий debug/audit без user notification.
 - [x] Для `use_alternate_target` логировать исходный и alternate target.
 - [x] Для `fail_request` завершать request через единый error path.
-- [ ] Добавить локализацию fallback messages.
+- [x] Добавить локализацию fallback messages.
 - [x] Добавить отдельные тексты для RAG failure, STT failure, TTS failure, tool failure.
 - [x] Не спамить пользователя несколькими fallback notifications за один request.
 - [x] Сохранять fallback notification в `request_audit.details`.

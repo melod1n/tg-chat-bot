@@ -167,7 +167,7 @@ export async function runUnifiedAiResponsePipeline(params: {
 }): Promise<void> {
     const {options, config, downloads, prepared, streamMessage, controller} = params;
     const state = createResponsePipelineState(options);
-    const fallbackNotifier = new PipelineFallbackNotifier(options.msg);
+    const fallbackNotifier = new PipelineFallbackNotifier(options.msg, options.responseLanguage);
     const adapter = getProviderAdapter(options.provider);
     let selectedToolNames: string[] = [];
     let filteredTools: unknown[] = [];

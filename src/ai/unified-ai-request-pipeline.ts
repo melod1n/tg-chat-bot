@@ -292,7 +292,7 @@ export async function prepareUnifiedAiRequestPipeline(params: {
     ];
 
     const state = createAiRequestPipelineState(options);
-    const fallbackNotifier = new PipelineFallbackNotifier(options.msg);
+    const fallbackNotifier = new PipelineFallbackNotifier(options.msg, options.responseLanguage);
     const pipeline = new UserRequestPipeline({
         stages,
         stageNames: [

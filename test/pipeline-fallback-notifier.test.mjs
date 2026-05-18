@@ -10,6 +10,11 @@ test("pipeline fallback text maps notify_user to a user-facing message", () => {
     assert.match(resolvePipelineFallbackText("tool_loop", "notify_user"), /tool/i);
 });
 
+test("pipeline fallback text is localized when locale is provided", () => {
+    assert.match(resolvePipelineFallbackText("document_rag", "notify_user", "ru"), /RAG|документ/i);
+    assert.match(resolvePipelineFallbackText("text_to_speech", "notify_user", "ua"), /аудіо|мовлення/i);
+});
+
 test("pipeline fallback text stays silent for continue_without_stage", () => {
     assert.equal(resolvePipelineFallbackText("document_rag", "continue_without_stage"), undefined);
     assert.equal(resolvePipelineFallbackText("tool_loop", "continue_without_stage"), undefined);
