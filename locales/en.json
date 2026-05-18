@@ -183,6 +183,9 @@
   "getWhenPluralUnitText": "{unit}s",
   "getWhenDurationText": "{prefix}{value} {unit}",
   "commandDescriptions": {
+    "aiAudit": "Inspect AI request audit and artifacts",
+    "aiMetrics": "Show AI observability counters",
+    "aiRequests": "Show recent AI requests",
     "ae": "evaluation",
     "adminsAdd": "Add user to admins",
     "adminsRemove": "Remove user from admins",

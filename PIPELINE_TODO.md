@@ -135,14 +135,14 @@
 
 ## 10. Operational cleanup and observability
 
-- [ ] Add retention policy for `data/cache/internal-artifacts`.
+- [x] Add retention policy for `data/cache/internal-artifacts`.
 - [ ] Add retention policy for stale RAG vector/library provider state.
-- [ ] Add command or admin view for recent `ai_requests`.
-- [ ] Add command or admin view for request audit by message id.
-- [ ] Add command to inspect artifacts for a message.
-- [ ] Add log correlation by `requestId` across AI logs, tool logs and DB audit.
-- [ ] Add metrics counters: requests, failures, fallbacks, tool calls, RAG runs, TTS runs.
-- [ ] Add startup migration logs for `ai_requests`, `attachments`, `artifacts`, `request_audit`.
+- [x] Add command or admin view for recent `ai_requests`.
+- [x] Add command or admin view for request audit by message id.
+- [x] Add command to inspect artifacts for a message.
+- [x] Add log correlation by `requestId` across AI logs, tool logs and DB audit.
+- [x] Add metrics counters: requests, failures, fallbacks, tool calls, RAG runs, TTS runs.
+- [x] Add startup migration logs for `ai_requests`, `attachments`, `artifacts`, `request_audit`.
 
 ## Suggested order
 

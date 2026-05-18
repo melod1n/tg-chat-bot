@@ -78,6 +78,7 @@ function photoGenDir(): string {
 export type UnifiedRunOptions = {
     provider: AiProvider;
     msg: Message;
+    requestId?: string;
     isGuestMsg?: boolean;
     text: string;
     stream?: boolean;

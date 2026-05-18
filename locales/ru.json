@@ -209,6 +209,9 @@
   "getWhenPluralUnitText": "{unit}",
   "getWhenDurationText": "{prefix}{value} {unit}",
   "commandDescriptions": {
+    "aiRequests": "Показать последние AI-запросы",
+    "aiAudit": "Показать аудит AI-запроса и артефакты",
+    "aiMetrics": "Показать счётчики AI-обсервабилити",
     "ae": "вычисление",
     "adminsAdd": "Добавить пользователя в администраторы",
     "adminsRemove": "Удалить пользователя из администраторов",

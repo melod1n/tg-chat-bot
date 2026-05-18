@@ -75,6 +75,9 @@ import {UserSettingsCallback} from "./callback_commands/user-settings.js";
 import {TextToSpeech} from "./commands/text-to-speech.js";
 import {SpeechToText} from "./commands/speech-to-text.js";
 import {cleanupInternalArtifactCache} from "./ai/internal-artifact-store.js";
+import {AIAudit} from "./commands/ai-audit.js";
+import {AIMetrics} from "./commands/ai-metrics.js";
+import {AIRequests} from "./commands/ai-requests.js";
 
 process.setUncaughtExceptionCaptureCallback(logError);
 
@@ -119,6 +122,9 @@ export const commands: Command[] = [
     new Settings(),
     new TextToSpeech(),
     new SpeechToText(),
+    new AIRequests(),
+    new AIAudit(),
+    new AIMetrics(),
 
     new AdminsAdd(),
     new AdminsRemove(),
@@ -272,6 +278,21 @@ async function main() {
     }, () => ({notesRootFilePath}));
 
     await measureStartupStep("cleanup_internal_artifacts", () => cleanupInternalArtifactCache(), () => ({retentionDays: 14}));
+    await measureStartupStep("observability.snapshot", async () => {
+        const [aiRequests, attachments, artifacts, requestAudits] = await Promise.all([
+            DatabaseManager.getAllAiRequests(),
+            DatabaseManager.getAllAttachments(),
+            DatabaseManager.getAllArtifacts(),
+            DatabaseManager.getAllRequestAudits(),
+        ]);
+
+        return {
+            aiRequests: aiRequests.length,
+            attachments: attachments.length,
+            artifacts: artifacts.length,
+            requestAudits: requestAudits.length,
+        };
+    }, () => ({tables: ["ai_requests", "attachments", "artifacts", "request_audit"]}));
 
     const cmds = await measureStartupStep("build_commands", () => commands.filter(cmd => {
         return cmd.title && cmd.title.startsWith("/") && cmd.title.split(" ").length === 1 && cmd.description;

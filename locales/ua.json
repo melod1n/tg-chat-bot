@@ -208,6 +208,9 @@
   "getWhenPluralUnitText": "{unit}",
   "getWhenDurationText": "{prefix}{value} {unit}",
   "commandDescriptions": {
+    "aiRequests": "Показати останні AI-запити",
+    "aiAudit": "Показати аудит AI-запиту та артефакти",
+    "aiMetrics": "Показати лічильники AI-спостережуваності",
     "help": "Показати список команд",
     "settings": "Налаштування користувача",
     "start": "Запустити бота",

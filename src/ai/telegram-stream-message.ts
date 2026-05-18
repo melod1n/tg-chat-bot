@@ -5,6 +5,7 @@ import {Environment} from "../common/environment";
 import {MessageStore} from "../common/message-store";
 import {createQueuedFunction} from "../util/async-lock";
 import {enqueueTelegramApiCall} from "../util/telegram-api-queue";
+import {appLogger} from "../logging/logger";
 import fs from "node:fs";
 import path from "node:path";
 import {StoredAttachment, StoredAttachmentKind} from "../model/stored-attachment";
@@ -13,11 +14,13 @@ import {prepareTelegramMarkdownV2} from "../util/markdown-v2-renderer";
 import {AiProvider} from "../model/ai-provider";
 import {AI_IMAGE_OUTPUT_MODE_DOCUMENT, UserAiImageOutputMode} from "../common/user-ai-settings";
 import {PIPELINE_ATTACHMENT_LIMIT_BYTES} from "./user-request-pipeline";
+import {recordToolCall} from "../common/ai-observability.js";
 
 const TELEGRAM_LIMIT = 4096;
 const TELEGRAM_CAPTION_LIMIT = 1024;
 const TELEGRAM_PHOTO_LIMIT_BYTES = 10 * 1024 * 1024;
 const EDIT_INTERVAL_MS = 4500;
+const logger = appLogger.child("telegram-stream-message");
 
 export type TelegramArtifactFile = {
     kind: "image" | "file";
@@ -238,6 +241,13 @@ export class TelegramStreamMessage {
 
     recordToolExecution(record: TelegramToolExecutionRecord): void {
         this.toolExecutions.push(record);
+        recordToolCall();
+        logger.debug("tool.execution.recorded", {
+            requestId: this.cancelRequestId,
+            toolName: record.toolName,
+            callId: record.callId,
+            resultChars: record.resultChars,
+        });
     }
 
     getToolExecutions(): TelegramToolExecutionRecord[] {
@@ -246,6 +256,13 @@ export class TelegramStreamMessage {
 
     recordOutputAttachment(record: TelegramOutputAttachmentRecord): void {
         this.outputAttachments.push(record);
+        logger.debug("output_attachment.recorded", {
+            requestId: this.cancelRequestId,
+            artifactKind: record.artifactKind,
+            fileName: record.fileName,
+            sizeBytes: record.sizeBytes,
+            messageId: record.messageId,
+        });
     }
 
     getOutputAttachments(): TelegramOutputAttachmentRecord[] {

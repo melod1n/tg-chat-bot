@@ -15,6 +15,7 @@ import {prepareDocumentRag} from "./document-rag-pipeline";
 import {persistRagArtifactAttachment} from "./rag-artifact-store";
 import {persistTranscriptArtifactAttachment} from "./transcript-artifact-store";
 import type {ToolRuntimeContext} from "./tools/runtime";
+import {recordPipelineFallback, recordRagRun} from "../common/ai-observability.js";
 import {
     appendTranscriptToChatMessages,
     collectTextMessages,
@@ -64,7 +65,7 @@ function runtimeTargetFor(options: UnifiedRunOptions, config: RuntimeConfigSnaps
 
 function createAiRequestPipelineState(options: UnifiedRunOptions): UserRequestPipelineState {
     return {
-        requestId: `ai:${options.msg.chat.id}:${options.msg.message_id}:${Date.now()}`,
+        requestId: options.requestId ?? `ai:${options.msg.chat.id}:${options.msg.message_id}:${Date.now()}`,
         chatId: options.msg.chat.id,
         messageId: options.msg.message_id,
         replyToMessageId: options.msg.reply_to_message?.message_id,
@@ -274,6 +275,10 @@ export async function prepareUnifiedAiRequestPipeline(params: {
                     await streamMessage.storeInternalAttachment(ragArtifact);
                 }
 
+                if (prepared.preparedDocumentRag) {
+                    recordRagRun();
+                }
+
                 return {
                     stage: "document_rag",
                     status: prepared.preparedDocumentRag ? "succeeded" : "skipped",
@@ -313,11 +318,13 @@ export async function prepareUnifiedAiRequestPipeline(params: {
             "audit_finish",
         ],
         onFallback: async decision => {
+            recordPipelineFallback(decision.action);
             if (decision.action === "use_alternate_target") {
                 aiLog("warn", "request.fallback.use_alternate_target", {
                     provider: options.provider,
                     stage: decision.stage,
                     reason: decision.reason,
+                    requestId: state.requestId,
                     ...buildToolRankFallbackTargetDetails(options.provider, config),
                 });
             }
@@ -327,6 +334,7 @@ export async function prepareUnifiedAiRequestPipeline(params: {
                     provider: options.provider,
                     stage: decision.stage,
                     reason: decision.reason,
+                    requestId: state.requestId,
                 });
             }
 

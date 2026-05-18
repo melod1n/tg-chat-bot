@@ -34,6 +34,7 @@ import {
 } from "./text-to-speech";
 import {persistFinalTextArtifactAttachment} from "./final-response-artifact-store";
 import {aiLog} from "../logging/ai-logger";
+import {recordPipelineFallback, recordTtsRun} from "../common/ai-observability.js";
 
 function nowIso(): string {
     return new Date().toISOString();
@@ -41,7 +42,7 @@ function nowIso(): string {
 
 function createResponsePipelineState(options: UnifiedRunOptions): UserRequestPipelineState {
     return {
-        requestId: `ai-response:${options.msg.chat.id}:${options.msg.message_id}:${Date.now()}`,
+        requestId: options.requestId ?? `ai-response:${options.msg.chat.id}:${options.msg.message_id}:${Date.now()}`,
         chatId: options.msg.chat.id,
         messageId: options.msg.message_id,
         replyToMessageId: options.msg.reply_to_message?.message_id,
@@ -357,6 +358,7 @@ export async function runUnifiedAiResponsePipeline(params: {
             name: "text_to_speech",
             async run() {
                 const status = await synthesizeResponseIfRequested({options, config, streamMessage});
+                recordTtsRun(status);
                 return {
                     stage: "text_to_speech",
                     status,
@@ -396,11 +398,13 @@ export async function runUnifiedAiResponsePipeline(params: {
             "audit_finish",
         ],
         onFallback: async decision => {
+            recordPipelineFallback(decision.action);
             if (decision.action === "use_alternate_target") {
                 aiLog("warn", "response.fallback.use_alternate_target", {
                     provider: options.provider,
                     stage: decision.stage,
                     reason: decision.reason,
+                    requestId: state.requestId,
                     ...buildToolRankFallbackTargetDetails(options.provider, config),
                 });
             }
@@ -410,6 +414,7 @@ export async function runUnifiedAiResponsePipeline(params: {
                     provider: options.provider,
                     stage: decision.stage,
                     reason: decision.reason,
+                    requestId: state.requestId,
                 });
             }
 
