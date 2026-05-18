@@ -81,12 +81,12 @@
 
 - [ ] Stage `model_call` должен делать только один model request.
 - [x] Stage `model_call` должен возвращать normalized model output.
-- [ ] Stage `tool_loop` должен решать, есть ли tool calls.
+- [x] Stage `tool_loop` должен решать, есть ли tool calls.
 - [ ] Stage `tool_loop` должен выполнять tools через общий `executeToolBatch`.
 - [ ] Stage `tool_loop` должен добавлять tool results в provider adapter.
 - [ ] Stage `tool_loop` должен управлять max rounds.
 - [ ] Stage `tool_loop` должен сохранять tool result artifacts.
-- [ ] Stage `tool_loop` должен уметь завершаться без tools как `skipped`.
+- [x] Stage `tool_loop` должен уметь завершаться без tools как `skipped`.
 - [ ] Убрать tool loop из `runOpenAi`.
 - [ ] Убрать tool loop из `runMistral`.
 - [ ] Убрать tool loop из `runOllama`.

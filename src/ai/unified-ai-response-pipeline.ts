@@ -22,6 +22,7 @@ import {runOpenAi} from "./unified-ai-runner.openai";
 import {runOllama} from "./unified-ai-runner.ollama";
 import {runMistral} from "./unified-ai-runner.mistral";
 import {summarizeModelOutput} from "./response-model-output";
+import {summarizeToolLoop} from "./tool-loop-summary";
 import {
     resolveTextToSpeechProviderForUser,
     sendSynthesizedSpeech,
@@ -269,38 +270,15 @@ export async function runUnifiedAiResponsePipeline(params: {
             name: "tool_loop",
             async run() {
                 const executions = streamMessage.getToolExecutions();
+                const summary = summarizeToolLoop({
+                    text: streamMessage.getText(),
+                    executions,
+                    outputAttachments: streamMessage.getOutputAttachments(),
+                });
+
                 return {
                     stage: "tool_loop",
-                    status: executions.length ? "succeeded" : "skipped",
-                    fallbackAction: executions.length ? undefined : "continue_without_stage",
-                    details: {
-                        modelOutput: summarizeModelOutput({
-                            text: streamMessage.getText(),
-                            toolExecutions: executions,
-                            outputAttachments: streamMessage.getOutputAttachments(),
-                        }),
-                        count: executions.length,
-                        tools: executions.map(execution => ({
-                            toolName: execution.toolName,
-                            callId: execution.callId,
-                            resultChars: execution.resultChars,
-                        })),
-                    },
-                    artifacts: executions.length ? [{
-                        kind: "tool_result",
-                        stage: "tool_loop",
-                        createdAt: new Date().toISOString(),
-                        toolName: "summary",
-                        callId: "tool_loop_summary",
-                        resultText: JSON.stringify({
-                            count: executions.length,
-                            tools: executions.map(execution => ({
-                                toolName: execution.toolName,
-                                callId: execution.callId,
-                                resultChars: execution.resultChars,
-                            })),
-                        }),
-                    }] : undefined,
+                    ...summary,
                 };
             },
         },
