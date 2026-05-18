@@ -23,6 +23,7 @@ import {runOllama} from "./unified-ai-runner.ollama";
 import {runMistral} from "./unified-ai-runner.mistral";
 import {summarizeModelOutput} from "./response-model-output";
 import {summarizeToolLoop} from "./tool-loop-summary";
+import {persistToolLoopSummaryArtifactAttachment} from "./tool-loop-artifact-store";
 import {
     resolveTextToSpeechProviderForUser,
     sendSynthesizedSpeech,
@@ -270,15 +271,31 @@ export async function runUnifiedAiResponsePipeline(params: {
             name: "tool_loop",
             async run() {
                 const executions = streamMessage.getToolExecutions();
+                const outputAttachments = streamMessage.getOutputAttachments();
                 const summary = summarizeToolLoop({
                     text: streamMessage.getText(),
                     executions,
-                    outputAttachments: streamMessage.getOutputAttachments(),
+                    outputAttachments,
                 });
+                const persisted = await persistToolLoopSummaryArtifactAttachment({
+                    chatId: options.msg.chat.id,
+                    messageId: options.msg.message_id,
+                    text: streamMessage.getText(),
+                    executions,
+                    outputAttachments,
+                });
+
+                if (persisted) {
+                    await streamMessage.storeInternalAttachment(persisted);
+                }
 
                 return {
                     stage: "tool_loop",
                     ...summary,
+                    details: {
+                        ...summary.details,
+                        persistedSummaryArtifact: !!persisted,
+                    },
                 };
             },
         },
