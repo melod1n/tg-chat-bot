@@ -18,6 +18,7 @@ import {
     ToolExecutionMemory
 } from "./unified-ai-runner.shared";
 import {executeToolBatchWithAdapter} from "./tool-batch-runner";
+import {decideToolLoopContinuation} from "./tool-loop-control";
 import {Message} from "typescript-telegram-bot-api";
 
 export async function runMistral(
@@ -111,6 +112,17 @@ export async function runMistral(
                     adapter,
                     appendTargets: [messages, requestMessages],
                 });
+                const continuation = decideToolLoopContinuation({
+                    round,
+                    maxRounds: MAX_TOOL_ROUNDS,
+                    toolCalls: calls,
+                });
+                if (!continuation.continue && continuation.reason === "max_rounds_reached") {
+                    aiLog("warn", "mistral.tool_loop.max_rounds_reached", {
+                        round,
+                        maxRounds: MAX_TOOL_ROUNDS,
+                    });
+                }
                 continue;
             }
 
@@ -168,6 +180,17 @@ export async function runMistral(
                 adapter,
                 appendTargets: [messages, requestMessages],
             });
+            const continuation = decideToolLoopContinuation({
+                round,
+                maxRounds: MAX_TOOL_ROUNDS,
+                toolCalls: calls,
+            });
+            if (!continuation.continue && continuation.reason === "max_rounds_reached") {
+                aiLog("warn", "mistral.tool_loop.max_rounds_reached", {
+                    round,
+                    maxRounds: MAX_TOOL_ROUNDS,
+                });
+            }
         }
     } finally {
         await adapter.finalize().catch(() => undefined);

@@ -33,6 +33,7 @@ import {
     allToolSchemaNames
 } from "./unified-ai-runner.shared";
 import {executeToolBatchWithAdapter} from "./tool-batch-runner";
+import {decideToolLoopContinuation} from "./tool-loop-control";
 import {bot} from "../index";
 import fs from "node:fs";
 import path from "node:path";
@@ -202,6 +203,18 @@ export async function runOpenAi(
                             });
                         }
                     }
+                }
+
+                const continuation = decideToolLoopContinuation({
+                    round,
+                    maxRounds: MAX_TOOL_ROUNDS,
+                    toolCalls: calls,
+                });
+                if (!continuation.continue && continuation.reason === "max_rounds_reached") {
+                    aiLog("warn", "openai.tool_loop.max_rounds_reached", {
+                        round,
+                        maxRounds: MAX_TOOL_ROUNDS,
+                    });
                 }
 
                 responseInput = [...responseInput, ...(response.output ?? []), ...toolOutputs];
@@ -398,6 +411,18 @@ export async function runOpenAi(
                         });
                     }
                 }
+            }
+
+            const continuation = decideToolLoopContinuation({
+                round,
+                maxRounds: MAX_TOOL_ROUNDS,
+                toolCalls: calls,
+            });
+            if (!continuation.continue && continuation.reason === "max_rounds_reached") {
+                aiLog("warn", "openai.tool_loop.max_rounds_reached", {
+                    round,
+                    maxRounds: MAX_TOOL_ROUNDS,
+                });
             }
 
             responseInput = [...responseInput, ...(completedResponse.output ?? []), ...toolOutputs];

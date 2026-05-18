@@ -84,7 +84,7 @@
 - [x] Stage `tool_loop` должен решать, есть ли tool calls.
 - [x] Stage `tool_loop` должен выполнять tools через общий `executeToolBatch`.
 - [x] Stage `tool_loop` должен добавлять tool results в provider adapter.
-- [ ] Stage `tool_loop` должен управлять max rounds.
+- [x] Stage `tool_loop` должен управлять max rounds.
 - [ ] Stage `tool_loop` должен сохранять tool result artifacts.
 - [x] Stage `tool_loop` должен уметь завершаться без tools как `skipped`.
 - [ ] Убрать tool loop из `runOpenAi`.

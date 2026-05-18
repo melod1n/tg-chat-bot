@@ -33,6 +33,7 @@ import {
     ToolExecutionMemory
 } from "./unified-ai-runner.shared";
 import {executeToolBatchWithAdapter} from "./tool-batch-runner";
+import {decideToolLoopContinuation} from "./tool-loop-control";
 import {getToolPrompts} from "./tools/registry";
 import {GetNoteFileResult, GetNoteFileResultSchema} from "./tools/notes";
 import {getModelCapabilities} from "./provider-model-runtime";
@@ -296,6 +297,18 @@ export async function runOllama(
                     appendTargets: [messages],
                 });
 
+                const continuation = decideToolLoopContinuation({
+                    round,
+                    maxRounds: MAX_TOOL_ROUNDS,
+                    toolCalls: calls,
+                });
+                if (!continuation.continue && continuation.reason === "max_rounds_reached") {
+                    aiLog("warn", "ollama.tool_loop.max_rounds_reached", {
+                        round,
+                        maxRounds: MAX_TOOL_ROUNDS,
+                    });
+                }
+
                 continue;
             }
 
@@ -413,6 +426,18 @@ export async function runOllama(
                 adapter,
                 appendTargets: [messages],
             });
+
+            const continuation = decideToolLoopContinuation({
+                round,
+                maxRounds: MAX_TOOL_ROUNDS,
+                toolCalls: calls,
+            });
+            if (!continuation.continue && continuation.reason === "max_rounds_reached") {
+                aiLog("warn", "ollama.tool_loop.max_rounds_reached", {
+                    round,
+                    maxRounds: MAX_TOOL_ROUNDS,
+                });
+            }
 
             let successGetNoteFileResult: GetNoteFileResult | undefined = undefined;
 
