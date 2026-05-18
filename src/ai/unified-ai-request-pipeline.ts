@@ -3,6 +3,7 @@ import {AI_VOICE_MODE_TRANSCRIPT, DEFAULT_AI_RESPONSE_LANGUAGE} from "../common/
 import {Environment} from "../common/environment";
 import {UserRequestPipeline, type UserRequestPipelineState, type UserRequestPipelineStage} from "./user-request-pipeline";
 import {PipelineFallbackNotifier} from "./user-request-pipeline/fallback-notifier";
+import {buildToolRankFallbackTargetDetails} from "./user-request-pipeline/fallback-target-details";
 import type {AiDownloadedFile} from "./telegram-attachments";
 import type {TelegramStreamMessage} from "./telegram-stream-message";
 import type {ChatMessage} from "./chat-messages-types";
@@ -304,6 +305,23 @@ export async function prepareUnifiedAiRequestPipeline(params: {
             "audit_finish",
         ],
         onFallback: async decision => {
+            if (decision.action === "use_alternate_target") {
+                aiLog("warn", "request.fallback.use_alternate_target", {
+                    provider: options.provider,
+                    stage: decision.stage,
+                    reason: decision.reason,
+                    ...buildToolRankFallbackTargetDetails(options.provider, config),
+                });
+            }
+
+            if (decision.action === "fail_request") {
+                aiLog("error", "request.fallback.fail_request", {
+                    provider: options.provider,
+                    stage: decision.stage,
+                    reason: decision.reason,
+                });
+            }
+
             const notification = await fallbackNotifier.notify(state.requestId, decision);
             state.audit.push({
                 stage: decision.stage,
@@ -315,6 +333,9 @@ export async function prepareUnifiedAiRequestPipeline(params: {
                     fallbackNotification: notification.text,
                     fallbackNotified: notification.notified,
                     reason: decision.reason,
+                    ...(decision.action === "use_alternate_target"
+                        ? buildToolRankFallbackTargetDetails(options.provider, config)
+                        : {}),
                 },
             });
         },

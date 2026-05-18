@@ -1,5 +1,6 @@
 import {DEFAULT_PIPELINE_FALLBACK_POLICIES, USER_REQUEST_PIPELINE_STAGES} from "./blueprint.js";
 import {decidePipelineFallback, type PipelineFallbackDecision} from "./fallback-executor.js";
+import {raisePipelineRequestFailure} from "./fallback-failure.js";
 import type {
     PipelineAuditEvent,
     PipelineFallbackPolicy,
@@ -66,7 +67,7 @@ export class UserRequestPipeline {
                     },
                 }));
                 if (decision.shouldFailRequest) {
-                    throw new Error(`Required pipeline stage is not registered: ${stageName}`);
+                    raisePipelineRequestFailure(decision, stageName);
                 }
                 continue;
             }
@@ -112,7 +113,7 @@ export class UserRequestPipeline {
                     error: error instanceof Error ? error.message : String(error),
                 }));
                 if (decision.shouldFailRequest) {
-                    throw error;
+                    raisePipelineRequestFailure(decision, stageName);
                 }
             }
         }

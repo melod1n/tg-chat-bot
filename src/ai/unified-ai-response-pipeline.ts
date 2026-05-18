@@ -25,6 +25,7 @@ import {summarizeModelOutput} from "./response-model-output";
 import {summarizeToolLoop} from "./tool-loop-summary";
 import {persistToolLoopSummaryArtifactAttachment} from "./tool-loop-artifact-store";
 import {PipelineFallbackNotifier} from "./user-request-pipeline/fallback-notifier";
+import {buildToolRankFallbackTargetDetails} from "./user-request-pipeline/fallback-target-details";
 import {
     resolveTextToSpeechProviderForUser,
     sendSynthesizedSpeech,
@@ -395,6 +396,23 @@ export async function runUnifiedAiResponsePipeline(params: {
             "audit_finish",
         ],
         onFallback: async decision => {
+            if (decision.action === "use_alternate_target") {
+                aiLog("warn", "response.fallback.use_alternate_target", {
+                    provider: options.provider,
+                    stage: decision.stage,
+                    reason: decision.reason,
+                    ...buildToolRankFallbackTargetDetails(options.provider, config),
+                });
+            }
+
+            if (decision.action === "fail_request") {
+                aiLog("error", "response.fallback.fail_request", {
+                    provider: options.provider,
+                    stage: decision.stage,
+                    reason: decision.reason,
+                });
+            }
+
             const notification = await fallbackNotifier.notify(state.requestId, decision);
             state.audit.push({
                 stage: decision.stage,
@@ -406,6 +424,9 @@ export async function runUnifiedAiResponsePipeline(params: {
                     fallbackNotification: notification.text,
                     fallbackNotified: notification.notified,
                     reason: decision.reason,
+                    ...(decision.action === "use_alternate_target"
+                        ? buildToolRankFallbackTargetDetails(options.provider, config)
+                        : {}),
                 },
             });
         },

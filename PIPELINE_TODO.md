@@ -97,8 +97,8 @@
 - [x] Добавить `PipelineFallbackNotifier`.
 - [x] Для `notify_user` отправлять пользователю понятное сообщение.
 - [x] Для `continue_without_stage` писать короткий debug/audit без user notification.
-- [ ] Для `use_alternate_target` логировать исходный и alternate target.
-- [ ] Для `fail_request` завершать request через единый error path.
+- [x] Для `use_alternate_target` логировать исходный и alternate target.
+- [x] Для `fail_request` завершать request через единый error path.
 - [ ] Добавить локализацию fallback messages.
 - [x] Добавить отдельные тексты для RAG failure, STT failure, TTS failure, tool failure.
 - [x] Не спамить пользователя несколькими fallback notifications за один request.
