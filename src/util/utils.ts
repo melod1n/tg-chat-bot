@@ -1,7 +1,7 @@
 import * as si from "systeminformation";
-import {appLogger} from "../logging/logger";
-import {Command} from "../base/command";
-import {CallbackCommand} from "../base/callback-command";
+import {appLogger} from "../logging/logger.js";
+import {Command} from "../base/command.js";
+import {CallbackCommand} from "../base/callback-command.js";
 import {
     CallbackQuery,
     ChatMember,
@@ -15,39 +15,39 @@ import {
     TelegramBot,
     User
 } from "typescript-telegram-bot-api";
-import {Environment} from "../common/environment";
-import {TelegramError} from "typescript-telegram-bot-api/dist/errors";
-import {bot, botUser, callbackCommands, commands, messageDao, photoDir} from "../index";
+import {Environment} from "../common/environment.js";
+import {TelegramError} from "typescript-telegram-bot-api/dist/errors.js";
+import {bot, botUser, callbackCommands, commands, messageDao, photoDir} from "../index.js";
 import os from "os";
 import axios from "axios";
-import {MessageAudioPart, MessageImagePart, MessagePart} from "../common/message-part";
-import {StoredMessage} from "../model/stored-message";
+import {MessageAudioPart, MessageImagePart, MessagePart} from "../common/message-part.js";
+import {StoredMessage} from "../model/stored-message.js";
 import sharp from "sharp";
-import {UserStore} from "../common/user-store";
+import {UserStore} from "../common/user-store.js";
 import fs from "node:fs";
 import path from "node:path";
-import {MessageStore} from "../common/message-store";
-import {SystemInfo} from "../commands/system-info";
-import {PrefixResponse} from "../commands/prefix-response";
-import {ChatCommand} from "../base/chat-command";
-import {AiProvider} from "../model/ai-provider";
-import {SendOptions} from "../model/send-options";
-import {EditOptions} from "../model/edit-options";
-import {StoredUser} from "../model/stored-user";
-import {StoredAttachment} from "../model/stored-attachment";
-import {AiDownloadedFile} from "../ai/telegram-attachments";
-import {runUnifiedAi} from "../ai/unified-ai-runner";
-import {enqueueTelegramApiCall} from "./telegram-api-queue";
-import {AsyncSemaphore, KeyedAsyncLock} from "./async-lock";
-import {resolveEffectiveAiProviderForUser, resolveInterfaceLocaleForUser} from "../common/user-ai-settings";
-import {Localization} from "../common/localization";
-import {createOllamaClient, resolveAiRuntimeTarget} from "../ai/ai-runtime-target";
-import {RandomUtils} from "./random-utils";
-import {HtmlUtils} from "./html-utils";
-import {ShellCommandResult, ShellCommandRunner} from "./shell-command-runner";
-import type {BoundaryValue, ErrorLike} from "../common/boundary-types";
-import {createStoredImageAttachment, photoCachePathForUniqueId, uniqueStoredAttachments} from "../common/stored-attachment-utils";
-import {runTelegramMessageAttachmentPipeline} from "../ai/user-request-pipeline";
+import {MessageStore} from "../common/message-store.js";
+import {SystemInfo} from "../commands/system-info.js";
+import {PrefixResponse} from "../commands/prefix-response.js";
+import {ChatCommand} from "../base/chat-command.js";
+import {AiProvider} from "../model/ai-provider.js";
+import {SendOptions} from "../model/send-options.js";
+import {EditOptions} from "../model/edit-options.js";
+import {StoredUser} from "../model/stored-user.js";
+import {StoredAttachment} from "../model/stored-attachment.js";
+import {AiDownloadedFile} from "../ai/telegram-attachments.js";
+import {runUnifiedAi} from "../ai/unified-ai-runner.js";
+import {enqueueTelegramApiCall} from "./telegram-api-queue.js";
+import {AsyncSemaphore, KeyedAsyncLock} from "./async-lock.js";
+import {resolveEffectiveAiProviderForUser, resolveInterfaceLocaleForUser} from "../common/user-ai-settings.js";
+import {Localization} from "../common/localization.js";
+import {createOllamaClient, resolveAiRuntimeTarget} from "../ai/ai-runtime-target.js";
+import {RandomUtils} from "./random-utils.js";
+import {HtmlUtils} from "./html-utils.js";
+import {ShellCommandResult, ShellCommandRunner} from "./shell-command-runner.js";
+import type {BoundaryValue, ErrorLike} from "../common/boundary-types.js";
+import {createStoredImageAttachment, photoCachePathForUniqueId, uniqueStoredAttachments} from "../common/stored-attachment-utils.js";
+import {runTelegramMessageAttachmentPipeline} from "../ai/user-request-pipeline/index.js";
 
 const imageProcessingSemaphore = new AsyncSemaphore(2);
 const fileWriteLocks = new KeyedAsyncLock();

@@ -5,7 +5,6 @@ import type {BoundaryValue} from "../common/boundary-types";
 import {AiProvider} from "../model/ai-provider.js";
 import {ToolRankerFallbackPolicy} from "../common/policies.js";
 import {Environment} from "../common/environment.js";
-import {photoGenDir} from "../index.js";
 import {delay, logError, replyToMessage} from "../util/utils.js";
 import {MessageStore} from "../common/message-store.js";
 import type {OpenAiResponseTool} from "./tool-mappers.js";
@@ -71,6 +70,10 @@ export const MIN_OLLAMA_CONTEXT_SIZE = 4096;
 export const MAX_OLLAMA_CONTEXT_SIZE = 262144;
 export const DEFAULT_OLLAMA_CONTEXT_SIZE = 32768;
 export const toolResourceLocks = new KeyedAsyncLock();
+
+function photoGenDir(): string {
+    return path.join(Environment.DATA_PATH, "cache", "photo", "gen");
+}
 
 export type UnifiedRunOptions = {
     provider: AiProvider;
@@ -1523,7 +1526,7 @@ export function writeOpenAiGeneratedImage(sourceMessage: Message, b64: string, l
 } {
     const buffer = Buffer.from(b64, "base64");
     const fileName = `${sourceMessage.chat.id}_${sourceMessage.message_id}_${Date.now()}_${label}.png`;
-    const cachePath = path.join(photoGenDir, fileName);
+    const cachePath = path.join(photoGenDir(), fileName);
     fs.writeFileSync(cachePath, buffer);
     return {buffer, cachePath, fileName};
 }

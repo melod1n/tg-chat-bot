@@ -10,7 +10,9 @@ export async function storeToolRankAudit(params: {
     round: number;
     startedAt: number;
     startedAtIso: string;
+    availableTools: string[];
     selectedTools?: string[];
+    usedRanker?: boolean;
     error?: unknown;
 }): Promise<void> {
     const event: PipelineAuditEvent = {
@@ -23,7 +25,16 @@ export async function storeToolRankAudit(params: {
         model: params.model,
         details: {
             round: params.round,
+            availableTools: params.availableTools,
             selectedTools: params.selectedTools ?? [],
+            usedRanker: params.usedRanker ?? false,
+            toolRankDecision: {
+                provider: params.provider,
+                round: params.round,
+                availableTools: params.availableTools,
+                selectedTools: params.selectedTools ?? [],
+                usedRanker: params.usedRanker ?? false,
+            },
         },
         error: params.error instanceof Error ? params.error.message : params.error ? String(params.error) : undefined,
     };

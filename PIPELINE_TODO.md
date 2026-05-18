@@ -67,13 +67,13 @@
 ## 5. Сделать tool-ranker полноценным pipeline stage
 
 - [x] Вынести вызов `ToolRanker.selectTools(...)` из provider runners.
-- [ ] Добавить stage `tool_rank`, который работает через provider adapter.
-- [ ] Добавить stage `filter_tools`, который фильтрует provider-specific tools по результату ranker.
-- [ ] Хранить `ToolRankDecision` в `UserRequestPipelineState.toolRankDecisions`.
-- [ ] Сохранять `ToolRankDecision` в `request_audit.details`.
+- [x] Добавить stage `tool_rank`, который работает через provider adapter.
+- [x] Добавить stage `filter_tools`, который фильтрует provider-specific tools по результату ranker.
+- [x] Хранить `ToolRankDecision` в `UserRequestPipelineState.toolRankDecisions`.
+- [x] Сохранять `ToolRankDecision` в `request_audit.details`.
 - [ ] Убрать дублирующий ручной `tool-rank-audit.ts`, если stage полностью заменит его.
-- [ ] Сохранить status UX: `🧩 Выбираю подходящие инструменты...`.
-- [ ] Гарантировать `clearStatus()` после ranker success/failure.
+- [x] Сохранить status UX: `🧩 Выбираю подходящие инструменты...`.
+- [x] Гарантировать `clearStatus()` после ranker success/failure.
 - [ ] Добавить fallback через `PipelineFallbackExecutor`: main model, all tools, no tools.
 - [ ] Добавить tests на fallback ranker policy.
 

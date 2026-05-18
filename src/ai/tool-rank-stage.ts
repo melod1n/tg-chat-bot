@@ -1,11 +1,9 @@
-import {Environment} from "../common/environment.js";
 import {AiProvider} from "../model/ai-provider.js";
 import type {BoundaryValue} from "../common/boundary-types.js";
 import type {TelegramStreamMessage} from "./telegram-stream-message.js";
 import type {RuntimeConfigSnapshot} from "./unified-ai-runner.shared.js";
-import {filterRankedTools} from "./tool-ranker-pipeline.js";
-import {ToolRanker} from "./unified-ai-runner.tool-ranker.js";
-import {storeToolRankAudit} from "./tool-rank-audit.js";
+import {allToolSchemaNames, toolSchemaNames} from "./tool-schema-utils.js";
+import type {ToolRanker} from "./unified-ai-runner.tool-ranker.js";
 
 function latestUserText(messages: readonly { role?: string; content?: unknown }[]): string {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -35,16 +33,33 @@ export async function runToolRankStage(params: {
     streamMessage: TelegramStreamMessage;
     signal: AbortSignal;
     toolRanker?: ToolRanker;
+    storeAudit?: (params: {
+        streamMessage: TelegramStreamMessage;
+        provider: AiProvider;
+        model: string;
+        round: number;
+        startedAt: number;
+        startedAtIso: string;
+        availableTools: string[];
+        selectedTools?: string[];
+        usedRanker?: boolean;
+        error?: unknown;
+    }) => Promise<void>;
 }): Promise<{
     filteredTools: BoundaryValue[];
     selectedToolNames: string[];
     usedRanker: boolean;
 }> {
-    const toolRanker = params.toolRanker ?? new ToolRanker(params.config);
+    const toolRanker = params.toolRanker ?? new (await import("./unified-ai-runner.tool-ranker.js")).ToolRanker(params.config);
     const startedAt = Date.now();
     const startedAtIso = new Date().toISOString();
+    const storeAudit = params.storeAudit ?? (await import("./tool-rank-audit.js")).storeToolRankAudit;
+    const filterSelectedTools = (selectedToolNames: readonly string[]): BoundaryValue[] => {
+        const selected = new Set(selectedToolNames);
+        return params.availableTools.filter(tool => toolSchemaNames(tool).some(name => selected.has(name)));
+    };
 
-    params.streamMessage.setStatus(Environment.getSelectingToolsText());
+    params.streamMessage.setStatus("🧩 Выбираю подходящие инструменты...");
     await params.streamMessage.flush();
 
     try {
@@ -58,31 +73,34 @@ export async function runToolRankStage(params: {
 
         params.streamMessage.clearStatus();
         await params.streamMessage.flush();
-        await storeToolRankAudit({
+        await storeAudit({
             streamMessage: params.streamMessage,
             provider: params.provider,
             model: params.model,
             round: params.round,
             startedAt,
             startedAtIso,
+            availableTools: allToolSchemaNames(params.availableTools),
             selectedTools: selection.toolNames,
+            usedRanker: selection.usedRanker,
         });
 
         return {
-            filteredTools: filterRankedTools(params.availableTools, selection.toolNames),
+            filteredTools: filterSelectedTools(selection.toolNames),
             selectedToolNames: selection.toolNames,
             usedRanker: selection.usedRanker,
         };
     } catch (error) {
         params.streamMessage.clearStatus();
         await params.streamMessage.flush();
-        await storeToolRankAudit({
+        await storeAudit({
             streamMessage: params.streamMessage,
             provider: params.provider,
             model: params.model,
             round: params.round,
             startedAt,
             startedAtIso,
+            availableTools: allToolSchemaNames(params.availableTools),
             error,
         });
         throw error;
