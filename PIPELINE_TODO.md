@@ -119,19 +119,19 @@
 
 ## 9. Интеграционные tests без реальных Telegram/AI API
 
-- [ ] Создать fake `TelegramStreamMessage`.
-- [ ] Создать fake provider adapter.
-- [ ] Создать fake message store или in-memory DB fixture.
-- [ ] Test: oversized input attachment rejected before download.
-- [ ] Test: document input creates RAG artifact.
-- [ ] Test: voice input creates transcript artifact.
-- [ ] Test: final answer creates final_text artifact.
-- [ ] Test: thrown error creates error artifact.
-- [ ] Test: tool call creates tool_result artifact.
-- [ ] Test: generated file creates generated_file artifact.
-- [ ] Test: TTS requested creates tts_audio artifact.
-- [ ] Test: fallback `continue_without_stage` continues request.
-- [ ] Test: fallback `fail_request` stops request.
+- [x] Создать fake `TelegramStreamMessage`.
+- [x] Создать fake provider adapter.
+- [x] Создать fake message store или in-memory DB fixture.
+- [x] Test: oversized input attachment rejected before download.
+- [x] Test: document input creates RAG artifact.
+- [x] Test: voice input creates transcript artifact.
+- [x] Test: final answer creates final_text artifact.
+- [x] Test: thrown error creates error artifact.
+- [x] Test: tool call creates tool_result artifact.
+- [x] Test: generated file creates generated_file artifact.
+- [x] Test: TTS requested creates tts_audio artifact.
+- [x] Test: fallback `continue_without_stage` continues request.
+- [x] Test: fallback `fail_request` stops request.
 
 ## 10. Operational cleanup and observability
 
