@@ -1,4 +1,4 @@
-import {AiProvider} from "./ai-provider";
+import {AiProvider} from "./ai-provider.js";
 
 export type AiEndpointInfo = {
     provider?: AiProvider;

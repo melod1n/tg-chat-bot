@@ -2,11 +2,11 @@ import {spawn} from "node:child_process";
 import {copyFile, lstat, mkdir, readdir, rm, writeFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import {AiTool} from "../tool-types";
-import {Environment} from "../../common/environment";
-import {toolsLogger} from "./tool-logger";
+import {AiTool} from "../tool-types.js";
+import {Environment} from "../../common/environment.js";
+import {toolsLogger} from "./tool-logger.js";
 import {randomUUID} from "node:crypto";
-import {AiJsonObject} from "../tool-types";
+import {AiJsonObject} from "../tool-types.js";
 
 const logger = toolsLogger.child("python-interpreter");
 

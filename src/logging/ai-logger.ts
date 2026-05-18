@@ -1,5 +1,5 @@
 import {Message} from "typescript-telegram-bot-api";
-import {createLogger, formatDuration, LogDetails, LogLevel} from "./logger";
+import {createLogger, formatDuration, LogDetails, LogLevel} from "./logger.js";
 
 export type AiRunnerLogLevel = LogLevel;
 export type AiRunnerLogDetails = LogDetails;

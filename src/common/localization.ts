@@ -1,7 +1,7 @@
 import {AsyncLocalStorage} from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
-import {appLogger} from "../logging/logger";
+import {appLogger} from "../logging/logger.js";
 
 const logger = appLogger.child("localization");
 

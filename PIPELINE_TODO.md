@@ -75,7 +75,7 @@
 - [x] Сохранить status UX: `🧩 Выбираю подходящие инструменты...`.
 - [x] Гарантировать `clearStatus()` после ranker success/failure.
 - [ ] Добавить fallback через `PipelineFallbackExecutor`: main model, all tools, no tools.
-- [ ] Добавить tests на fallback ranker policy.
+- [x] Добавить tests на fallback ranker policy.
 
 ## 6. Сделать model_call и tool_loop физически отдельными stages
 

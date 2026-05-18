@@ -1,4 +1,4 @@
-import {AiCapabilityInfo} from "./ai-capability-info";
+import {AiCapabilityInfo} from "./ai-capability-info.js";
 
 export class AiModelCapabilities {
     chat: AiCapabilityInfo | undefined;

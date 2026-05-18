@@ -6,15 +6,18 @@ import {z} from "zod";
 import {appLogger} from "../logging/logger.js";
 import type {BoundaryValue, ErrorLike} from "./boundary-types";
 
-import {saveData} from "../db/database.js";
 import {Answers} from "../model/answers.js";
-import {ifTrue} from "../util/utils.js";
 import {AiProvider} from "../model/ai-provider.js";
 import {ImageHandleFallbackPolicy, ImageHandlePolicy, RateLimitFallbackPolicy} from "./policies.js";
 import {ToolRankerFallbackPolicy} from "./policies.js";
 import type {ToolCallData} from "../ai/unified-ai-runner.js";
 import {PYTHON_INTERPRETER_TOOL_NAME} from "../ai/tools/python-interpretator.js";
 import {Localization, type LocalizationParams} from "./localization.js";
+
+function parseBooleanLike(value: string): boolean {
+    const normalized = value.trim().toLowerCase();
+    return ["true", "t", "y", "1"].includes(normalized);
+}
 
 type EnvRecord = Record<string, string>;
 type StringEnumLike = Record<string, string>;
@@ -53,7 +56,7 @@ function booleanWithDefaultSchema(defaultValue: boolean) {
                 return defaultValue;
             }
 
-            return ifTrue(normalized);
+            return parseBooleanLike(normalized);
         }, z.boolean())
         .default(defaultValue)
         .catch(defaultValue);
@@ -62,7 +65,7 @@ function booleanWithDefaultSchema(defaultValue: boolean) {
 const optionalBooleanSchema = z
     .preprocess(value => {
         const normalized = normalizeString(value as BoundaryValue);
-        return normalized === undefined ? undefined : ifTrue(normalized);
+        return normalized === undefined ? undefined : parseBooleanLike(normalized);
     }, z.boolean().optional())
     .optional()
     .catch(undefined);
@@ -1939,6 +1942,7 @@ export class Environment {
 
         if (!has) {
             this.ADMIN_IDS.add(id);
+            const {saveData} = await import("../db/database.js");
             await saveData();
         }
 
@@ -1950,6 +1954,7 @@ export class Environment {
 
         if (has) {
             this.ADMIN_IDS.delete(id);
+            const {saveData} = await import("../db/database.js");
             await saveData();
         }
 
@@ -1966,6 +1971,7 @@ export class Environment {
         }
 
         this.MUTED_IDS.add(id);
+        const {saveData} = await import("../db/database.js");
         await saveData();
         return true;
     }
@@ -1976,6 +1982,7 @@ export class Environment {
         }
 
         this.MUTED_IDS.delete(id);
+        const {saveData} = await import("../db/database.js");
         await saveData();
         return true;
     }

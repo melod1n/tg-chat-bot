@@ -1,12 +1,12 @@
-import type {BoundaryValue} from "../common/boundary-types";
-import type {AiRuntimeTarget} from "./ai-runtime-target";
-import {AiProvider} from "../model/ai-provider";
-import {RuntimeConfigSnapshot, toolSchemaNames} from "./unified-ai-runner.shared";
+import type {BoundaryValue} from "../common/boundary-types.js";
+import type {AiRuntimeTarget} from "./ai-runtime-target.js";
+import {AiProvider} from "../model/ai-provider.js";
+import {RuntimeConfigSnapshot, toolSchemaNames} from "./unified-ai-runner.shared.js";
 import {
     buildToolRankerSystemPrompt,
     getToolRankerAvailableToolInfos,
     type ToolRankerToolInfo,
-} from "./tool-ranker-metadata";
+} from "./tool-ranker-metadata.js";
 
 export type ToolRankerMessage = {
     role?: string;

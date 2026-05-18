@@ -1,20 +1,21 @@
 import {ChatCompletionMessageParam} from "openai/resources/chat/completions";
 import {ChatRequest} from "ollama";
-import {BoundaryValue} from "../common/boundary-types";
-import {ToolRankerFallbackPolicy} from "../common/policies";
-import {AiProvider} from "../model/ai-provider";
-import {createMistralClient, createOllamaClient, createOpenAiClient, sameRuntimeEndpoint} from "./ai-runtime-target";
-import {aiLog, aiLogDuration, aiLogProviderTarget} from "../logging/ai-logger";
-import {providerChatTarget, RuntimeConfigSnapshot} from "./unified-ai-runner.shared";
+import {BoundaryValue} from "../common/boundary-types.js";
+import {ToolRankerFallbackPolicy} from "../common/policies.js";
+import {AiProvider} from "../model/ai-provider.js";
+import {createMistralClient, createOllamaClient, createOpenAiClient, sameRuntimeEndpoint} from "./ai-runtime-target.js";
+import {aiLog, aiLogDuration, aiLogProviderTarget} from "../logging/ai-logger.js";
+import {providerChatTarget, RuntimeConfigSnapshot} from "./unified-ai-runner.shared.js";
 import {
     buildRankerContext,
     buildRankerTarget,
     buildToolRankerPrompt,
     filterRankedTools,
     ToolRankerSelection,
-} from "./tool-ranker-pipeline";
-import {allToolSchemaNames} from "./unified-ai-runner.shared";
-import {sanitizeToolRankerResult} from "./tool-ranker-metadata";
+} from "./tool-ranker-pipeline.js";
+import {allToolSchemaNames} from "./unified-ai-runner.shared.js";
+import {sanitizeToolRankerResult} from "./tool-ranker-metadata.js";
+import {resolveToolRankerFallbackSelection} from "./tool-ranker-fallback.js";
 
 export class ToolRanker {
     constructor(private readonly config: RuntimeConfigSnapshot) {
@@ -27,8 +28,15 @@ export class ToolRanker {
         round: number;
         signal: AbortSignal;
         messages?: readonly { role?: string; content?: string | readonly { text?: string }[] }[];
+        runRanker?: (
+            provider: AiProvider,
+            target: NonNullable<ReturnType<typeof buildRankerTarget>>,
+            prompt: string,
+            userQuery: string,
+        ) => Promise<string>;
     }): Promise<ToolRankerSelection> {
         const {availableTools, provider, round, signal, userQuery} = args;
+        const runRanker = args.runRanker ?? this.runRanker.bind(this);
         const availableNames = allToolSchemaNames(availableTools);
         const fallbackPolicy = this.config.toolRankerFallbackPolicy;
         const configuredTarget = buildRankerTarget(this.config, provider);
@@ -41,11 +49,10 @@ export class ToolRanker {
         const target = configuredTarget ?? (fallbackPolicy === ToolRankerFallbackPolicy.MAIN_MODEL ? mainModelTarget : undefined);
 
         if (!target) {
-            if (fallbackPolicy === ToolRankerFallbackPolicy.NO_TOOLS) {
-                return {toolNames: [], usedRanker: false};
-            }
-
-            return {toolNames: availableNames, usedRanker: false};
+            return resolveToolRankerFallbackSelection({
+                fallbackPolicy,
+                availableToolNames: availableNames,
+            });
         }
 
         const startedAt = Date.now();
@@ -63,7 +70,7 @@ export class ToolRanker {
 
         try {
             if (signal.aborted) throw new Error("Aborted");
-            const raw = await this.runRanker(provider, target, ranker.prompt, userQuery);
+            const raw = await runRanker(provider, target, ranker.prompt, userQuery);
             if (signal.aborted) throw new Error("Aborted");
             const selectedNames = sanitizeToolRankerResult({
                 raw,
@@ -106,7 +113,7 @@ export class ToolRanker {
                     const fallbackRanker = buildToolRankerPrompt(
                         buildRankerContext(this.config, provider, mainModelTarget, round, userQuery, availableTools),
                     );
-                    const raw = await this.runRanker(provider, mainModelTarget, fallbackRanker.prompt, userQuery);
+                    const raw = await runRanker(provider, mainModelTarget, fallbackRanker.prompt, userQuery);
                     const selectedNames = sanitizeToolRankerResult({
                         raw,
                         availableToolNames: availableNames,
@@ -151,14 +158,10 @@ export class ToolRanker {
                 error: failureMessage,
             });
 
-            if (fallbackPolicy === ToolRankerFallbackPolicy.NO_TOOLS) {
-                return {toolNames: [], usedRanker: false};
-            }
-
-            return {
-                toolNames: availableNames,
-                usedRanker: false,
-            };
+            return resolveToolRankerFallbackSelection({
+                fallbackPolicy,
+                availableToolNames: availableNames,
+            });
         }
     }
 

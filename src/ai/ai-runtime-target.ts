@@ -1,9 +1,9 @@
 import {Mistral} from "@mistralai/mistralai";
 import {Ollama} from "ollama";
 import {OpenAI} from "openai";
-import {Environment} from "../common/environment";
-import {AiModelCapabilities} from "../model/ai-model-capabilities";
-import {AiProvider} from "../model/ai-provider";
+import {Environment} from "../common/environment.js";
+import {AiModelCapabilities} from "../model/ai-model-capabilities.js";
+import {AiProvider} from "../model/ai-provider.js";
 
 export type AiCapabilityName = keyof AiModelCapabilities;
 export type AiRuntimePurpose = AiCapabilityName | "chat";
