@@ -79,7 +79,7 @@
 
 ## 6. Сделать model_call и tool_loop физически отдельными stages
 
-- [ ] Stage `model_call` должен делать только один model request.
+- [x] Stage `model_call` должен делать только один model request.
 - [x] Stage `model_call` должен возвращать normalized model output.
 - [x] Stage `tool_loop` должен решать, есть ли tool calls.
 - [x] Stage `tool_loop` должен выполнять tools через общий `executeToolBatch`.
@@ -87,10 +87,10 @@
 - [x] Stage `tool_loop` должен управлять max rounds.
 - [x] Stage `tool_loop` должен сохранять tool result artifacts.
 - [x] Stage `tool_loop` должен уметь завершаться без tools как `skipped`.
-- [ ] Убрать tool loop из `runOpenAi`.
-- [ ] Убрать tool loop из `runMistral`.
-- [ ] Убрать tool loop из `runOllama`.
-- [ ] Добавить tests на multi-round fake adapter.
+- [x] Убрать tool loop из `runOpenAi`.
+- [x] Убрать tool loop из `runMistral`.
+- [x] Убрать tool loop из `runOllama`.
+- [x] Добавить tests на multi-round fake adapter.
 
 ## 7. Довести fallback notifications до централизованного UX
 

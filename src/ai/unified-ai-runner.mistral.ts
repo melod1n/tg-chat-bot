@@ -19,6 +19,8 @@ import {
 } from "./unified-ai-runner.shared";
 import {executeToolBatchWithAdapter} from "./tool-batch-runner";
 import {decideToolLoopContinuation} from "./tool-loop-control";
+import {runToolLoopRounds} from "./tool-loop-runner";
+import {runSingleModelRequest} from "./model-call-stage";
 import {Message} from "typescript-telegram-bot-api";
 
 export async function runMistral(
@@ -47,7 +49,9 @@ export async function runMistral(
 
     const toolMemory: ToolExecutionMemory = new Map();
     try {
-        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        await runToolLoopRounds({
+            maxRounds: MAX_TOOL_ROUNDS,
+            onRound: async (round) => {
             const roundStartedAt = Date.now();
             aiLog("debug", "mistral.round.start", {round, messages: messages.length, stream});
             if (signal.aborted) throw new Error("Aborted");
@@ -75,7 +79,9 @@ export async function runMistral(
                     tools: requestTools,
                     documents: documents
                 } as Parameters<typeof mistralAi.chat.complete>[0];
-                const response = await adapter.callModel(request, () => mistralAi.chat.complete(request, {signal}));
+                const response = await runSingleModelRequest({
+                    execute: () => adapter.callModel(request, () => mistralAi.chat.complete(request, {signal})),
+                });
                 const message = response.choices?.[0]?.message;
                 const text = typeof message?.content === "string" ? message.content : JSON.stringify(message?.content ?? "");
                 streamMessage.append(text);
@@ -86,7 +92,7 @@ export async function runMistral(
                     textChars: text.length,
                     calls: calls.map(aiLogToolCall),
                 });
-                if (!calls.length) return;
+                if (!calls.length) return {shouldContinue: false};
                 messages.push({
                     role: "assistant",
                     content: text,
@@ -123,7 +129,7 @@ export async function runMistral(
                         maxRounds: MAX_TOOL_ROUNDS,
                     });
                 }
-                continue;
+                return {shouldContinue: true};
             }
 
             const request = {
@@ -132,7 +138,9 @@ export async function runMistral(
                 tools: requestTools,
                 documents: documents
             } as Parameters<typeof mistralAi.chat.stream>[0];
-            const streamResponse = await adapter.callModel(request, () => mistralAi.chat.stream(request, {signal}));
+            const streamResponse = await runSingleModelRequest({
+                execute: () => adapter.callModel(request, () => mistralAi.chat.stream(request, {signal})),
+            });
             aiLog("debug", "mistral.stream.open", {round});
             let calls: ToolCallData[] = [];
             const roundTextStart = streamMessage.getText().length;
@@ -159,7 +167,7 @@ export async function runMistral(
                 textChars: streamMessage.getText().slice(roundTextStart).length,
                 calls: calls.map(aiLogToolCall),
             });
-            if (!calls.length) return;
+            if (!calls.length) return {shouldContinue: false};
             const roundText = streamMessage.getText().slice(roundTextStart);
             messages.push({
                 role: "assistant",
@@ -185,13 +193,15 @@ export async function runMistral(
                 maxRounds: MAX_TOOL_ROUNDS,
                 toolCalls: calls,
             });
-            if (!continuation.continue && continuation.reason === "max_rounds_reached") {
-                aiLog("warn", "mistral.tool_loop.max_rounds_reached", {
-                    round,
-                    maxRounds: MAX_TOOL_ROUNDS,
-                });
-            }
-        }
+                if (!continuation.continue && continuation.reason === "max_rounds_reached") {
+                    aiLog("warn", "mistral.tool_loop.max_rounds_reached", {
+                        round,
+                        maxRounds: MAX_TOOL_ROUNDS,
+                    });
+                }
+                return {shouldContinue: true};
+        },
+        });
     } finally {
         await adapter.finalize().catch(() => undefined);
     }

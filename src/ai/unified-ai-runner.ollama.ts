@@ -34,6 +34,8 @@ import {
 } from "./unified-ai-runner.shared";
 import {executeToolBatchWithAdapter} from "./tool-batch-runner";
 import {decideToolLoopContinuation} from "./tool-loop-control";
+import {runToolLoopRounds} from "./tool-loop-runner";
+import {runSingleModelRequest} from "./model-call-stage";
 import {getToolPrompts} from "./tools/registry";
 import {GetNoteFileResult, GetNoteFileResultSchema} from "./tools/notes";
 import {getModelCapabilities} from "./provider-model-runtime";
@@ -156,7 +158,9 @@ export async function runOllama(
     const adapter = getProviderAdapter(AiProvider.OLLAMA);
 
     try {
-        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        await runToolLoopRounds({
+            maxRounds: MAX_TOOL_ROUNDS,
+            onRound: async (round) => {
             const roundStartedAt = Date.now();
             aiLog("debug", "ollama.round.start", {
                 round,
@@ -232,10 +236,12 @@ export async function runOllama(
             }
 
             if (!stream) {
-                const response = await adapter.callModel(request, () => ollama.chat({
-                    ...request,
-                    stream: false
-                }));
+                const response = await runSingleModelRequest({
+                    execute: () => adapter.callModel(request, () => ollama.chat({
+                        ...request,
+                        stream: false
+                    })),
+                });
 
                 const message = response.message;
                 const rawContent = message?.content ?? "";
@@ -266,7 +272,7 @@ export async function runOllama(
 
                 if (!nativeCalls.length) {
                     aiLog("success", "ollama.run.done", {round, duration: aiLogDuration(runnerStartedAt)});
-                    break;
+                    return {shouldContinue: false};
                 }
 
                 const calls = adapter.extractToolCalls(message).length ? adapter.extractToolCalls(message) : nativeCalls;
@@ -309,17 +315,19 @@ export async function runOllama(
                     });
                 }
 
-                continue;
+                return {shouldContinue: true};
             }
 
             aiLog("debug", "ollama.stream.messages", {
                 round,
                 messageCount: request.messages?.length ?? 0,
             });
-            const response = await adapter.callModel(request, () => ollama.chat({
-                ...request,
-                stream: true
-            }));
+            const response = await runSingleModelRequest({
+                execute: () => adapter.callModel(request, () => ollama.chat({
+                    ...request,
+                    stream: true
+                })),
+            });
 
             aiLog("debug", "ollama.stream.open", {round});
             const calls: ToolCallData[] = [];
@@ -394,7 +402,7 @@ export async function runOllama(
                     duration: aiLogDuration(runnerStartedAt),
                 });
 
-                break;
+                return {shouldContinue: false};
             }
 
             calls.splice(0, calls.length, ...dedupeToolCalls(calls));
@@ -469,7 +477,9 @@ export async function runOllama(
                 }).catch(logError);
             }
 
-        }
+            return {shouldContinue: true};
+        },
+        });
     } finally {
         if (interval) clearInterval(interval);
         await adapter.finalize().catch(() => undefined);

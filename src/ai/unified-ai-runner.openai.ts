@@ -34,6 +34,8 @@ import {
 } from "./unified-ai-runner.shared";
 import {executeToolBatchWithAdapter} from "./tool-batch-runner";
 import {decideToolLoopContinuation} from "./tool-loop-control";
+import {runToolLoopRounds} from "./tool-loop-runner";
+import {runSingleModelRequest} from "./model-call-stage";
 import {bot} from "../index";
 import fs from "node:fs";
 import path from "node:path";
@@ -87,7 +89,9 @@ export async function runOpenAi(
     const toolMemory: ToolExecutionMemory = new Map();
 
     try {
-        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        await runToolLoopRounds({
+            maxRounds: MAX_TOOL_ROUNDS,
+            onRound: async (round) => {
             const roundStartedAt = Date.now();
             aiLog("debug", "openai.round.start", {round, inputItems: responseInput.length, stream});
             const rankResult = await runToolRankStage({
@@ -122,7 +126,9 @@ export async function runOpenAi(
                     tools: requestTools as ResponseCreateParamsNonStreaming["tools"],
                     instructions: systemPrompt,
                 };
-                const response = await adapter.callModel(request, () => openAi.responses.create(request, {signal})) as OpenAiResponseLike;
+                const response = await runSingleModelRequest({
+                    execute: () => adapter.callModel(request, () => openAi.responses.create(request, {signal})),
+                }) as OpenAiResponseLike;
 
                 const responseText = collectOpenAiResponseText(response);
                 streamMessage.append(responseText);
@@ -169,7 +175,7 @@ export async function runOpenAi(
                         arguments: safeJsonParseObject(call.argumentsText)
                     })),
                 });
-                if (!calls.length) return;
+                if (!calls.length) return {shouldContinue: false};
 
                 const toolCalls = calls.map(call => ({
                     id: call.id,
@@ -218,7 +224,7 @@ export async function runOpenAi(
                 }
 
                 responseInput = [...responseInput, ...(response.output ?? []), ...toolOutputs];
-                continue;
+                return {shouldContinue: true};
             }
 
             let completedResponse: OpenAiResponseLike | null = null;
@@ -230,7 +236,9 @@ export async function runOpenAi(
                 parallel_tool_calls: true,
                 instructions: systemPrompt
             };
-            const response = await adapter.callModel(request, () => openAi.responses.create(request, {signal})) as AsyncIterableStream<ResponseStreamEvent>;
+            const response = await runSingleModelRequest({
+                execute: () => adapter.callModel(request, () => openAi.responses.create(request, {signal})),
+            }) as AsyncIterableStream<ResponseStreamEvent>;
 
             aiLog("debug", "openai.stream.open", {round});
 
@@ -377,7 +385,7 @@ export async function runOpenAi(
                     arguments: safeJsonParseObject(call.argumentsText)
                 })),
             });
-            if (!calls.length) return;
+            if (!calls.length) return {shouldContinue: false};
 
             const toolCalls = calls.map(call => ({
                 id: call.id,
@@ -426,7 +434,9 @@ export async function runOpenAi(
             }
 
             responseInput = [...responseInput, ...(completedResponse.output ?? []), ...toolOutputs];
-        }
+            return {shouldContinue: true};
+        },
+        });
     } finally {
         if (ownsDocumentRag) {
             await preparedDocumentRag?.cleanup().catch(logError);
