@@ -21,6 +21,7 @@ import {runToolRankStage} from "./tool-rank-stage";
 import {runOpenAi} from "./unified-ai-runner.openai";
 import {runOllama} from "./unified-ai-runner.ollama";
 import {runMistral} from "./unified-ai-runner.mistral";
+import {summarizeModelOutput} from "./response-model-output";
 import {
     resolveTextToSpeechProviderForUser,
     sendSynthesizedSpeech,
@@ -254,6 +255,13 @@ export async function runUnifiedAiResponsePipeline(params: {
                 return {
                     stage: "model_call",
                     status: "succeeded",
+                    details: {
+                        modelOutput: summarizeModelOutput({
+                            text: streamMessage.getText(),
+                            toolExecutions: streamMessage.getToolExecutions(),
+                            outputAttachments: streamMessage.getOutputAttachments(),
+                        }),
+                    },
                 };
             },
         },
@@ -266,6 +274,11 @@ export async function runUnifiedAiResponsePipeline(params: {
                     status: executions.length ? "succeeded" : "skipped",
                     fallbackAction: executions.length ? undefined : "continue_without_stage",
                     details: {
+                        modelOutput: summarizeModelOutput({
+                            text: streamMessage.getText(),
+                            toolExecutions: executions,
+                            outputAttachments: streamMessage.getOutputAttachments(),
+                        }),
                         count: executions.length,
                         tools: executions.map(execution => ({
                             toolName: execution.toolName,

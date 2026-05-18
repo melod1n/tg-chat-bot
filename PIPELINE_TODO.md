@@ -80,7 +80,7 @@
 ## 6. Сделать model_call и tool_loop физически отдельными stages
 
 - [ ] Stage `model_call` должен делать только один model request.
-- [ ] Stage `model_call` должен возвращать normalized model output.
+- [x] Stage `model_call` должен возвращать normalized model output.
 - [ ] Stage `tool_loop` должен решать, есть ли tool calls.
 - [ ] Stage `tool_loop` должен выполнять tools через общий `executeToolBatch`.
 - [ ] Stage `tool_loop` должен добавлять tool results в provider adapter.
