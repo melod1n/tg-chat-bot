@@ -34,7 +34,7 @@ import {aiLog, aiLogDuration, aiLogProviderTarget, aiLogToolCall} from "../loggi
 import {buildConversationSnapshot, serializeConversationSnapshot} from "./conversation-pipeline.js";
 import type {ResponseInputMessageContentList} from "openai/resources/responses/responses";
 import {persistToolResultArtifactAttachment} from "./tool-result-artifact-store.js";
-import {filterUserVisibleStoredAttachments} from "../common/attachment-visibility.js";
+import {filterUserInputStoredAttachments} from "../common/attachment-visibility.js";
 
 export type {Message} from "typescript-telegram-bot-api";
 export type {AiRuntimeTarget} from "./ai-runtime-target";
@@ -515,13 +515,13 @@ export function addMessageAttachmentKinds(msg: Message | undefined, kinds: Set<A
     if (msg.video) kinds.add("video");
 }
 
-export async function collectStoredReplyChainAttachments(msg: Message, limit: number = 1): Promise<StoredAttachment[]> {
+export async function collectStoredReplyChainAttachments(msg: Message, limit: number = 40): Promise<StoredAttachment[]> {
     const attachments: StoredAttachment[] = [];
     const seen = new Set<string>();
     let current = await MessageStore.get(msg.chat.id, msg.message_id);
 
     for (let i = 0; current && i < limit; i++) {
-        for (const attachment of filterUserVisibleStoredAttachments(current?.attachments ?? [])) {
+        for (const attachment of filterUserInputStoredAttachments(current?.attachments ?? [])) {
             const key = [
                 attachment.kind,
                 attachment.fileUniqueId || attachment.fileId,

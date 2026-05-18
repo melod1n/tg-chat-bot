@@ -4,7 +4,8 @@ import {Environment} from "../common/environment";
 import {UserRequestPipeline, type UserRequestPipelineState, type UserRequestPipelineStage} from "./user-request-pipeline";
 import {PipelineFallbackNotifier} from "./user-request-pipeline/fallback-notifier";
 import {buildToolRankFallbackTargetDetails} from "./user-request-pipeline/fallback-target-details";
-import type {AiDownloadedFile} from "./telegram-attachments";
+import {mergeReplyChainDownloads, shouldPreferCurrentDownloads} from "./reply-chain-downloads";
+import {attachmentsToDownloadedFiles, type AiDownloadedFile} from "./telegram-attachments";
 import type {TelegramStreamMessage} from "./telegram-stream-message";
 import type {ChatMessage} from "./chat-messages-types";
 import type {OpenAIChatMessage} from "./openai-chat-message";
@@ -23,6 +24,7 @@ import {
     stripAudioFromRunnerMessages,
     toolRuntimeContextFromDownloads,
     transcribeAudioIfNeeded,
+    collectStoredReplyChainAttachments,
     UnifiedRunOptions,
 } from "./unified-ai-runner.shared";
 import {aiLog} from "../logging/ai-logger";
@@ -92,6 +94,12 @@ export async function prepareUnifiedAiRequestPipeline(params: {
     controller: AbortController;
 }): Promise<PreparedUnifiedAiRequest> {
     const {options, config, downloads, streamMessage, controller} = params;
+    const replyChainDownloads = shouldPreferCurrentDownloads(options.text, downloads)
+        ? downloads
+        : mergeReplyChainDownloads(
+            downloads,
+            attachmentsToDownloadedFiles(await collectStoredReplyChainAttachments(options.msg)),
+        );
     const prepared: MutablePreparedContext = {
         chatMessages: [],
         imageCount: 0,
@@ -111,7 +119,7 @@ export async function prepareUnifiedAiRequestPipeline(params: {
                     details: {
                         phase: "ai_request_prepare",
                         provider: options.provider,
-                        downloads: downloads.map(download => ({
+                        downloads: replyChainDownloads.map(download => ({
                             kind: download.kind,
                             fileName: download.fileName,
                             mimeType: download.mimeType,
@@ -128,15 +136,15 @@ export async function prepareUnifiedAiRequestPipeline(params: {
                     options.msg,
                     options.text,
                     options.provider,
-                    downloads,
+                    replyChainDownloads,
                     config,
                     runtimeTargetFor(options, config),
                     options.responseLanguage ?? DEFAULT_AI_RESPONSE_LANGUAGE,
                 );
                 prepared.chatMessages = collected.chatMessages as typeof prepared.chatMessages;
                 prepared.imageCount = collected.imageCount;
-                prepared.firstRoundStatus = initialStatus(downloads, prepared.imageCount);
-                prepared.toolContext = toolRuntimeContextFromDownloads(downloads);
+                prepared.firstRoundStatus = initialStatus(replyChainDownloads, prepared.imageCount);
+                prepared.toolContext = toolRuntimeContextFromDownloads(replyChainDownloads);
 
                 return {
                     stage: "collect_conversation_context",
@@ -171,11 +179,11 @@ export async function prepareUnifiedAiRequestPipeline(params: {
                 prepared.transcript = await transcribeAudioIfNeeded(
                     options.provider,
                     options.msg.from?.id,
-                    downloads,
+                    replyChainDownloads,
                     streamMessage,
                     controller.signal,
                 ).catch(error => {
-                    if (downloads.some(isTranscribableAudioDownload)) throw error;
+                    if (replyChainDownloads.some(isTranscribableAudioDownload)) throw error;
                     return "";
                 });
 
@@ -190,7 +198,7 @@ export async function prepareUnifiedAiRequestPipeline(params: {
                 const transcriptArtifact = await persistTranscriptArtifactAttachment({
                     provider: options.provider,
                     transcript,
-                    downloads,
+                    downloads: replyChainDownloads,
                     chatId: options.msg.chat.id,
                     messageId: options.msg.message_id,
                 });
@@ -235,7 +243,7 @@ export async function prepareUnifiedAiRequestPipeline(params: {
 
                 prepared.preparedDocumentRag = await prepareDocumentRag(
                     options.provider,
-                    downloads,
+                    replyChainDownloads,
                     prepared.chatMessages,
                     streamMessage,
                     config,
@@ -246,7 +254,7 @@ export async function prepareUnifiedAiRequestPipeline(params: {
                 const ragArtifact = await persistRagArtifactAttachment({
                     provider: options.provider,
                     prepared: prepared.preparedDocumentRag,
-                    downloads,
+                    downloads: replyChainDownloads,
                     chatId: options.msg.chat.id,
                     messageId: options.msg.message_id,
                     details: prepared.preparedDocumentRag?.provider === AiProvider.OPENAI

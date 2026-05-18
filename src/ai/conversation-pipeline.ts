@@ -32,6 +32,7 @@ export type ConversationTurn = {
     content: string;
     deletedByBotAt?: number | null;
     attachments: ConversationAttachment[];
+    documentNames?: string[];
 };
 
 export type ConversationSnapshot = {
@@ -123,6 +124,13 @@ function attachmentSummary(attachments: ConversationAttachment[]): string {
     return ["[attachments]:", ...lines].join("\n");
 }
 
+function namesSummary(kind: string, names: string[]): string {
+    const filtered = names.map(name => name.trim()).filter(Boolean);
+    if (!filtered.length) return "";
+
+    return [`[${kind}]:`, ...filtered.map(name => `- ${name}`)].join("\n");
+}
+
 function supportedAttachmentKinds(provider: AiProvider, bot: boolean): Set<AttachmentKind> {
     if (bot) return new Set<AttachmentKind>();
 
@@ -158,6 +166,10 @@ function renderContentText(
 
     if (turn.bot && turn.deletedByBotAt) {
         parts.push("[message_state]: deleted_by_bot");
+    }
+
+    if (turn.documentNames?.length) {
+        parts.push(namesSummary("documents", turn.documentNames));
     }
 
     if (unsupported.length) {
@@ -291,6 +303,7 @@ export async function buildConversationSnapshot(
             content: part.content,
             deletedByBotAt: part.deletedByBotAt,
             attachments: buildConversationAttachments(part),
+            documentNames: part.documentNames,
         }));
 
     const imageCount = turns.reduce((sum, turn) => {

@@ -20,6 +20,9 @@ export type MessagePart = {
     audios?: string[];
     audioParts?: MessageAudioPart[];
     documents?: string[];
+    documentNames?: string[];
     videos?: string[];
     videoNotes?: string[];
+    videoNames?: string[];
+    videoNoteNames?: string[];
 }

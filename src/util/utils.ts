@@ -27,6 +27,7 @@ import {UserStore} from "../common/user-store.js";
 import fs from "node:fs";
 import path from "node:path";
 import {MessageStore} from "../common/message-store.js";
+import {filterUserInputStoredAttachments} from "../common/attachment-visibility.js";
 import {SystemInfo} from "../commands/system-info.js";
 import {PrefixResponse} from "../commands/prefix-response.js";
 import {ChatCommand} from "../base/chat-command.js";
@@ -1487,12 +1488,13 @@ export async function collectReplyChainText(options: ReplyChainOptions): Promise
             const cleanText = cutPrefix ? cutPrefixes(rawText) : rawText;
             const imageNames = await loadImagesIfExists(msg);
             const messageDownloads = includeDownloads ? downloads : [];
-            const storedImageAttachments = isStoredMessage(msg)
-                ? (msg.attachments ?? []).filter(attachment => attachment.kind === "image" && fs.existsSync(attachment.cachePath))
+            const storedAttachments = isStoredMessage(msg)
+                ? filterUserInputStoredAttachments(msg.attachments ?? []).filter(attachment => fs.existsSync(attachment.cachePath))
                 : [];
+            const storedImageAttachments = storedAttachments.filter(attachment => attachment.kind === "image");
 
             if (!cleanText && !quoteText && textRequired) return;
-            if (!cleanText && !quoteText && !imageNames?.length && !storedImageAttachments.length && !messageDownloads.length) return;
+            if (!cleanText && !quoteText && !imageNames?.length && !storedAttachments.length && !messageDownloads.length) return;
 
             const fromId = isStoredMessage(msg) ? msg.fromId : msg.from?.id;
             const user = await UserStore.get(isStoredMessage(msg) ? msg.fromId : msg.from?.id ?? -1);
@@ -1527,11 +1529,19 @@ export async function collectReplyChainText(options: ReplyChainOptions): Promise
             });
             const imageParts = [...photoImageParts, ...cachedImageParts];
 
+            const storedDocumentAttachments = storedAttachments.filter(attachment => attachment.kind === "document");
+            const storedVideoAttachments = storedAttachments.filter(attachment => attachment.kind === "video");
+            const storedVideoNoteAttachments = storedAttachments.filter(attachment => attachment.kind === "video-note");
+            const storedAudioAttachments = storedAttachments.filter(attachment => attachment.kind === "audio");
+
             const audios: string[] = [];
             const audioParts: MessageAudioPart[] = [];
             const documents: string[] = [];
+            const documentNames: string[] = [];
             const videos: string[] = [];
+            const videoNames: string[] = [];
             const videoNotes: string[] = [];
+            const videoNoteNames: string[] = [];
 
             if (messageDownloads.length) {
                 messageDownloads
@@ -1544,20 +1554,50 @@ export async function collectReplyChainText(options: ReplyChainOptions): Promise
 
                 messageDownloads
                     .filter(d => d.kind === "document")
-                    .forEach(d => documents.push(d.buffer.toString("base64")));
+                    .forEach(d => {
+                        documents.push(d.buffer.toString("base64"));
+                        documentNames.push(d.fileName);
+                    });
 
                 messageDownloads
                     .filter(d => d.kind === "video")
-                    .forEach(v => videos.push(v.buffer.toString("base64")));
+                    .forEach(v => {
+                        videos.push(v.buffer.toString("base64"));
+                        videoNames.push(v.fileName);
+                    });
 
                 messageDownloads
                     .filter(d => d.kind === "video-note")
                     .forEach(v => {
                         const data = v.buffer.toString("base64");
                         videoNotes.push(data);
+                        videoNoteNames.push(v.fileName);
                         audioParts.push({data, mimeType: mimeTypeFromAudioDownload(v)});
                     });
             }
+
+            storedAudioAttachments.forEach(attachment => {
+                const data = Buffer.from(fs.readFileSync(attachment.cachePath)).toString("base64");
+                audios.push(data);
+                audioParts.push({data, mimeType: attachment.mimeType || "audio/ogg"});
+            });
+
+            storedDocumentAttachments.forEach(attachment => {
+                documents.push(Buffer.from(fs.readFileSync(attachment.cachePath)).toString("base64"));
+                documentNames.push(attachment.fileName);
+            });
+
+            storedVideoAttachments.forEach(attachment => {
+                videos.push(Buffer.from(fs.readFileSync(attachment.cachePath)).toString("base64"));
+                videoNames.push(attachment.fileName);
+            });
+
+            storedVideoNoteAttachments.forEach(attachment => {
+                const data = Buffer.from(fs.readFileSync(attachment.cachePath)).toString("base64");
+                videoNotes.push(data);
+                videoNoteNames.push(attachment.fileName);
+                audioParts.push({data, mimeType: attachment.mimeType || "video/mp4"});
+            });
 
             const content = [
                 quoteText ? `[citation]:\n${quoteText}\n\n[message]:\n` : "",
@@ -1576,8 +1616,11 @@ export async function collectReplyChainText(options: ReplyChainOptions): Promise
                 audios: audios.length ? audios : undefined,
                 audioParts: audioParts.length ? audioParts : undefined,
                 documents: documents.length ? documents : undefined,
+                documentNames: documentNames.length ? documentNames : undefined,
                 videos: videos.length ? videos : undefined,
+                videoNames: videoNames.length ? videoNames : undefined,
                 videoNotes: videoNotes.length ? videoNotes : undefined,
+                videoNoteNames: videoNoteNames.length ? videoNoteNames : undefined,
             });
         }
     };
