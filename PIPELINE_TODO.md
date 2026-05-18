@@ -94,15 +94,15 @@
 
 ## 7. Довести fallback notifications до централизованного UX
 
-- [ ] Добавить `PipelineFallbackNotifier`.
-- [ ] Для `notify_user` отправлять пользователю понятное сообщение.
-- [ ] Для `continue_without_stage` писать короткий debug/audit без user notification.
+- [x] Добавить `PipelineFallbackNotifier`.
+- [x] Для `notify_user` отправлять пользователю понятное сообщение.
+- [x] Для `continue_without_stage` писать короткий debug/audit без user notification.
 - [ ] Для `use_alternate_target` логировать исходный и alternate target.
 - [ ] Для `fail_request` завершать request через единый error path.
 - [ ] Добавить локализацию fallback messages.
-- [ ] Добавить отдельные тексты для RAG failure, STT failure, TTS failure, tool failure.
-- [ ] Не спамить пользователя несколькими fallback notifications за один request.
-- [ ] Сохранять fallback notification в `request_audit.details`.
+- [x] Добавить отдельные тексты для RAG failure, STT failure, TTS failure, tool failure.
+- [x] Не спамить пользователя несколькими fallback notifications за один request.
+- [x] Сохранять fallback notification в `request_audit.details`.
 
 ## 8. Улучшить поведение reply-chain с документами
 

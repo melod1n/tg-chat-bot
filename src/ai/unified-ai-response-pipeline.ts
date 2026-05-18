@@ -24,6 +24,7 @@ import {runMistral} from "./unified-ai-runner.mistral";
 import {summarizeModelOutput} from "./response-model-output";
 import {summarizeToolLoop} from "./tool-loop-summary";
 import {persistToolLoopSummaryArtifactAttachment} from "./tool-loop-artifact-store";
+import {PipelineFallbackNotifier} from "./user-request-pipeline/fallback-notifier";
 import {
     resolveTextToSpeechProviderForUser,
     sendSynthesizedSpeech,
@@ -165,6 +166,7 @@ export async function runUnifiedAiResponsePipeline(params: {
 }): Promise<void> {
     const {options, config, downloads, prepared, streamMessage, controller} = params;
     const state = createResponsePipelineState(options);
+    const fallbackNotifier = new PipelineFallbackNotifier(options.msg);
     const adapter = getProviderAdapter(options.provider);
     let selectedToolNames: string[] = [];
     let filteredTools: unknown[] = [];
@@ -392,6 +394,21 @@ export async function runUnifiedAiResponsePipeline(params: {
             "persist_output_artifacts",
             "audit_finish",
         ],
+        onFallback: async decision => {
+            const notification = await fallbackNotifier.notify(state.requestId, decision);
+            state.audit.push({
+                stage: decision.stage,
+                status: "fallback",
+                startedAt: new Date().toISOString(),
+                finishedAt: new Date().toISOString(),
+                details: {
+                    fallbackAction: decision.action,
+                    fallbackNotification: notification.text,
+                    fallbackNotified: notification.notified,
+                    reason: decision.reason,
+                },
+            });
+        },
     });
 
     try {

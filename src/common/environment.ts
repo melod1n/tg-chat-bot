@@ -823,6 +823,34 @@ export class Environment {
         return this.text("noTextToSynthesizeText", "No text to synthesize.");
     }
 
+    static get pipelineFallbackGenericText() {
+        return this.text("pipelineFallbackGenericText", "⚠️ I had to skip part of the request, but I can continue.");
+    }
+
+    static get pipelineFallbackNotifyText() {
+        return this.text("pipelineFallbackNotifyText", "⚠️ I hit a problem and need to continue with a fallback.");
+    }
+
+    static get pipelineFallbackFailText() {
+        return this.text("pipelineFallbackFailText", "⚠️ I could not finish this request.");
+    }
+
+    static get pipelineFallbackRagText() {
+        return this.text("pipelineFallbackRagText", "⚠️ Document retrieval failed, so I will answer without RAG.");
+    }
+
+    static get pipelineFallbackSpeechToTextText() {
+        return this.text("pipelineFallbackSpeechToTextText", "⚠️ Speech transcription failed, so I will continue without the audio transcript.");
+    }
+
+    static get pipelineFallbackTextToSpeechText() {
+        return this.text("pipelineFallbackTextToSpeechText", "⚠️ Text-to-speech failed, so I will continue without audio output.");
+    }
+
+    static get pipelineFallbackToolText() {
+        return this.text("pipelineFallbackToolText", "⚠️ Tool execution failed, so I will continue without that tool.");
+    }
+
     static get mistralTtsNoAudioDataText() {
         return this.text("mistralTtsNoAudioDataText", "Mistral TTS did not return audioData.");
     }

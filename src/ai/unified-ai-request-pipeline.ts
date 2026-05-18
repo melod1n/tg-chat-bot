@@ -2,6 +2,7 @@ import {AiProvider} from "../model/ai-provider";
 import {AI_VOICE_MODE_TRANSCRIPT, DEFAULT_AI_RESPONSE_LANGUAGE} from "../common/user-ai-settings";
 import {Environment} from "../common/environment";
 import {UserRequestPipeline, type UserRequestPipelineState, type UserRequestPipelineStage} from "./user-request-pipeline";
+import {PipelineFallbackNotifier} from "./user-request-pipeline/fallback-notifier";
 import type {AiDownloadedFile} from "./telegram-attachments";
 import type {TelegramStreamMessage} from "./telegram-stream-message";
 import type {ChatMessage} from "./chat-messages-types";
@@ -290,6 +291,7 @@ export async function prepareUnifiedAiRequestPipeline(params: {
     ];
 
     const state = createAiRequestPipelineState(options);
+    const fallbackNotifier = new PipelineFallbackNotifier(options.msg);
     const pipeline = new UserRequestPipeline({
         stages,
         stageNames: [
@@ -301,6 +303,21 @@ export async function prepareUnifiedAiRequestPipeline(params: {
             "document_rag",
             "audit_finish",
         ],
+        onFallback: async decision => {
+            const notification = await fallbackNotifier.notify(state.requestId, decision);
+            state.audit.push({
+                stage: decision.stage,
+                status: "fallback",
+                startedAt: nowIso(),
+                finishedAt: nowIso(),
+                details: {
+                    fallbackAction: decision.action,
+                    fallbackNotification: notification.text,
+                    fallbackNotified: notification.notified,
+                    reason: decision.reason,
+                },
+            });
+        },
     });
     await pipeline.run(state, controller.signal);
     await streamMessage.storePipelineAudit(state.audit);
