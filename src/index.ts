@@ -78,6 +78,7 @@ import {cleanupInternalArtifactCache} from "./ai/internal-artifact-store.js";
 import {AIAudit} from "./commands/ai-audit.js";
 import {AIMetrics} from "./commands/ai-metrics.js";
 import {AIRequests} from "./commands/ai-requests.js";
+import {cleanupStaleRagProviderState} from "./ai/rag-retention.js";
 
 process.setUncaughtExceptionCaptureCallback(logError);
 
@@ -278,6 +279,7 @@ async function main() {
     }, () => ({notesRootFilePath}));
 
     await measureStartupStep("cleanup_internal_artifacts", () => cleanupInternalArtifactCache(), () => ({retentionDays: 14}));
+    await measureStartupStep("cleanup_stale_rag_provider_state", () => cleanupStaleRagProviderState(), () => ({retentionDays: 14}));
     await measureStartupStep("observability.snapshot", async () => {
         const [aiRequests, attachments, artifacts, requestAudits] = await Promise.all([
             DatabaseManager.getAllAiRequests(),

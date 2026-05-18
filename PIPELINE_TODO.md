@@ -136,7 +136,7 @@
 ## 10. Operational cleanup and observability
 
 - [x] Add retention policy for `data/cache/internal-artifacts`.
-- [ ] Add retention policy for stale RAG vector/library provider state.
+- [x] Add retention policy for stale RAG vector/library provider state.
 - [x] Add command or admin view for recent `ai_requests`.
 - [x] Add command or admin view for request audit by message id.
 - [x] Add command to inspect artifacts for a message.
