@@ -2,6 +2,7 @@ import {AiProvider} from "../model/ai-provider";
 import {Environment} from "../common/environment";
 import {ifTrue, logError} from "../util/utils";
 import {UserRequestPipeline, type UserRequestPipelineState, type UserRequestPipelineStage} from "./user-request-pipeline";
+import {getProviderAdapter} from "./provider-adapters";
 import type {AiDownloadedFile} from "./telegram-attachments";
 import type {TelegramStreamMessage} from "./telegram-stream-message";
 import type {PreparedUnifiedAiRequest} from "./unified-ai-request-pipeline";
@@ -9,12 +10,14 @@ import type {OpenAIChatMessage} from "./openai-chat-message";
 import type {MistralChatMessage} from "./mistral-chat-message";
 import type {ChatMessage} from "./chat-messages-types";
 import {
+    allToolSchemaNames,
     providerName,
     RuntimeConfigSnapshot,
     snapshotModel,
     TELEGRAM_LIMIT,
     UnifiedRunOptions,
 } from "./unified-ai-runner.shared";
+import {runToolRankStage} from "./tool-rank-stage";
 import {runOpenAi} from "./unified-ai-runner.openai";
 import {runOllama} from "./unified-ai-runner.ollama";
 import {runMistral} from "./unified-ai-runner.mistral";
@@ -159,6 +162,9 @@ export async function runUnifiedAiResponsePipeline(params: {
 }): Promise<void> {
     const {options, config, downloads, prepared, streamMessage, controller} = params;
     const state = createResponsePipelineState(options);
+    const adapter = getProviderAdapter(options.provider);
+    let selectedToolNames: string[] = [];
+    let filteredTools: unknown[] = [];
 
     const stages: UserRequestPipelineStage[] = [
         {
@@ -173,6 +179,62 @@ export async function runUnifiedAiResponsePipeline(params: {
                         model: snapshotModel(options.provider, config),
                         chatMessages: prepared.chatMessages.length,
                         hasDocumentRag: !!prepared.preparedDocumentRag,
+                    },
+                };
+            },
+        },
+        {
+            name: "tool_rank",
+            async run() {
+                const availableTools = adapter.rankTools(config, {
+                    forCreator: options.msg.from?.id === Environment.CREATOR_ID,
+                    vectorStoreIds: prepared.preparedDocumentRag?.provider === AiProvider.OPENAI
+                        ? prepared.preparedDocumentRag.vectorStoreIds
+                        : [],
+                });
+
+                const rankResult = await runToolRankStage({
+                    provider: options.provider,
+                    model: snapshotModel(options.provider, config),
+                    round: state.toolRankDecisions.length,
+                    config,
+                    availableTools,
+                    messages: prepared.chatMessages,
+                    streamMessage,
+                    signal: controller.signal,
+                });
+
+                selectedToolNames = rankResult.selectedToolNames;
+                filteredTools = rankResult.filteredTools;
+                state.toolRankDecisions.push({
+                    provider: options.provider,
+                    round: state.toolRankDecisions.length,
+                    availableTools: allToolSchemaNames(availableTools),
+                    selectedTools: selectedToolNames,
+                    usedRanker: rankResult.usedRanker,
+                });
+
+                return {
+                    stage: "tool_rank",
+                    status: "succeeded",
+                    details: {
+                        selectedTools: selectedToolNames,
+                        usedRanker: rankResult.usedRanker,
+                        availableTools: allToolSchemaNames(availableTools),
+                        toolRankDecision: state.toolRankDecisions.at(-1),
+                    },
+                };
+            },
+        },
+        {
+            name: "filter_tools",
+            async run() {
+                return {
+                    stage: "filter_tools",
+                    status: "succeeded",
+                    details: {
+                        selectedTools: selectedToolNames,
+                        filteredToolCount: filteredTools.length,
                     },
                 };
             },
@@ -312,6 +374,8 @@ export async function runUnifiedAiResponsePipeline(params: {
         stages,
         stageNames: [
             "audit_start",
+            "tool_rank",
+            "filter_tools",
             "model_call",
             "tool_loop",
             "output_size_gate",

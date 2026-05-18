@@ -1,9 +1,9 @@
 import * as fs from "fs";
-import {Environment} from "../common/environment";
-import {logError} from "../util/utils";
-import {Answers} from "../model/answers";
+import {Environment} from "../common/environment.js";
+import {logError} from "../util/utils.js";
+import {Answers} from "../model/answers.js";
 import path from "node:path";
-import {KeyedAsyncLock} from "../util/async-lock";
+import {KeyedAsyncLock} from "../util/async-lock.js";
 
 type DataJsonFile = {
     admins: number[]

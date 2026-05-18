@@ -1,8 +1,8 @@
 import {AiTool} from "./tool-types";
-import {AiProvider} from "../model/ai-provider";
-import {getTools} from "./tools/registry";
-import {WEB_SEARCH_TOOL_NAME} from "./tools/web-search";
-import {PYTHON_INTERPRETER_TOOL_NAME} from "./tools/python-interpretator";
+import {AiProvider} from "../model/ai-provider.js";
+import {getTools} from "./tools/registry.js";
+import {WEB_SEARCH_TOOL_NAME} from "./tools/web-search.js";
+import {PYTHON_INTERPRETER_TOOL_NAME} from "./tools/python-interpretator.js";
 
 export type AiProviderName = "ollama" | "openai" | "mistral";
 

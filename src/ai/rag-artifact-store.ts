@@ -4,75 +4,39 @@ import type {AiDownloadedFile} from "./telegram-attachments";
 import type {PreparedDocumentRag} from "./document-rag-pipeline";
 import type {OllamaRagArtifactDetails} from "./ollama-rag";
 import {persistInternalJsonArtifactAttachment} from "./internal-artifact-store";
-
-type RagArtifactPayload = {
-    artifactKind: "rag";
-    provider: AiProvider;
-    createdAt: string;
-    sources: Array<{
-        fileId: string;
-        fileName: string;
-        mimeType?: string;
-        sizeBytes?: number;
-        sha256?: string;
-        uploadedFileId?: string;
-        documentId?: string;
-    }>;
-    providerState: {
-        vectorStoreIds?: string[];
-        libraryId?: string;
-        documentCount?: number;
-        prepared?: boolean;
-        uploadedFileIds?: string[];
-        embeddingModel?: string;
-        topK?: number;
-        chunkSize?: number;
-        chunkOverlap?: number;
-        maxContextChars?: number;
-        extractedDocuments?: Array<{
-            documentIndex: number;
-            fileName: string;
-            textChars: number;
-        }>;
-        selectedChunks?: Array<{
-            sourceId: string;
-            documentIndex: number;
-            documentName: string;
-            chunkIndex: number;
-            chunkCount: number;
-            textChars: number;
-            score?: number;
-        }>;
-        skippedDocuments?: Array<{
-            documentIndex: number;
-            fileName: string;
-            reason: string;
-        }>;
-        query?: string;
-        ollama?: OllamaRagArtifactDetails["providerState"];
-    };
-};
+import {buildRagArtifactPayload, type RagArtifactPayload} from "./rag-artifact-payload";
 
 function providerState(prepared: PreparedDocumentRag, details?: NonNullable<Parameters<typeof persistRagArtifactAttachment>[0]["details"]>): RagArtifactPayload["providerState"] {
     switch (prepared.provider) {
         case AiProvider.OPENAI:
             return {
+                provider: AiProvider.OPENAI,
                 vectorStoreIds: prepared.vectorStoreIds,
                 uploadedFileIds: prepared.uploadedFileIds,
             };
         case AiProvider.MISTRAL:
             return {
+                provider: AiProvider.MISTRAL,
                 libraryId: prepared.libraryId,
                 documentCount: prepared.documents.length,
             };
         case AiProvider.OLLAMA:
             return {
+                provider: AiProvider.OLLAMA,
                 prepared: prepared.prepared,
                 embeddingModel: details?.embeddingModel,
                 topK: details?.topK,
                 chunkSize: details?.chunkSize,
                 chunkOverlap: details?.chunkOverlap,
                 maxContextChars: details?.maxContextChars,
+                extractedDocuments: details?.artifact?.extractedDocuments ?? [],
+                selectedChunks: details?.artifact?.selectedChunks ?? [],
+                skippedDocuments: details?.artifact?.skippedDocuments ?? [],
+                query: details?.artifact?.query ?? "",
+                minScore: details?.artifact?.providerState?.minScore ?? 0,
+                maxArchiveFiles: details?.artifact?.providerState?.maxArchiveFiles ?? 0,
+                maxArchiveBytes: details?.artifact?.providerState?.maxArchiveBytes ?? 0,
+                maxArchiveDepth: details?.artifact?.providerState?.maxArchiveDepth ?? 0,
             };
     }
 }
@@ -117,22 +81,11 @@ export async function persistRagArtifactAttachment(params: {
 
     if (!sources.length) return Promise.resolve(undefined);
 
-    const payload: RagArtifactPayload = {
-        artifactKind: "rag",
+    const payload = buildRagArtifactPayload({
         provider: params.provider,
-        createdAt: new Date().toISOString(),
         sources,
-        providerState: {
-            ...providerState(params.prepared, params.details),
-            ...(params.details?.artifact ? {
-                extractedDocuments: params.details.artifact.extractedDocuments,
-                selectedChunks: params.details.artifact.selectedChunks,
-                skippedDocuments: params.details.artifact.skippedDocuments,
-                query: params.details.artifact.query,
-                ollama: params.details.artifact.providerState,
-            } : {}),
-        },
-    };
+        providerState: providerState(params.prepared, params.details),
+    });
     return await persistInternalJsonArtifactAttachment({
         artifactKind: "rag",
         fileNamePrefix: "rag",
@@ -140,14 +93,8 @@ export async function persistRagArtifactAttachment(params: {
         messageId: params.messageId,
         payload,
         metadata: {
-            provider: params.provider,
             sourceFileNames: sources.map(source => source.fileName),
             ...payload.providerState,
-            embeddingModel: params.details?.embeddingModel,
-            topK: params.details?.topK,
-            chunkSize: params.details?.chunkSize,
-            chunkOverlap: params.details?.chunkOverlap,
-            maxContextChars: params.details?.maxContextChars,
         },
     });
 }

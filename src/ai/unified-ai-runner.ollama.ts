@@ -5,7 +5,6 @@ import {Environment} from "../common/environment";
 import type {BoundaryValue} from "../common/boundary-types";
 import {bot, notesDir} from "../index";
 import {clamp, logError} from "../util/utils";
-import {getOllamaTools} from "./tool-mappers";
 import {TelegramStreamMessage} from "./telegram-stream-message";
 import {ChatMessage} from "./chat-messages-types";
 import {ChatRequest, Tool} from "ollama";
@@ -14,10 +13,11 @@ import {enqueueTelegramApiCall} from "../util/telegram-api-queue";
 import {loadOllamaModel, unloadAllOllamaModels} from "./tools/utils";
 import {createOllamaClient} from "./ai-runtime-target";
 import {aiLog, aiLogDuration, aiLogMessageIdentity, aiLogProviderTarget, aiLogToolCall} from "../logging/ai-logger";
+import {getProviderAdapter} from "./provider-adapters";
+import {runToolRankStage} from "./tool-rank-stage";
 
 import {
     allToolSchemaNames,
-    appendOllamaToolResults,
     dedupeToolCalls,
     DEFAULT_OLLAMA_CONTEXT_SIZE,
     executeToolBatch,
@@ -26,8 +26,6 @@ import {
     MAX_OLLAMA_CONTEXT_SIZE,
     MAX_TOOL_ROUNDS,
     MIN_OLLAMA_CONTEXT_SIZE,
-    normalizeOllamaToolCalls,
-    OllamaToolCallLike,
     roundStatus,
     RuntimeConfigSnapshot,
     safeJsonParseObject,
@@ -35,14 +33,11 @@ import {
     ToolCallData,
     ToolExecutionMemory
 } from "./unified-ai-runner.shared";
-import {ToolRanker} from "./unified-ai-runner.tool-ranker";
 import {getToolPrompts} from "./tools/registry";
-import {filterRankedTools, latestUserTextFromMessages} from "./tool-ranker-pipeline";
 import {GetNoteFileResult, GetNoteFileResultSchema} from "./tools/notes";
 import {getModelCapabilities} from "./provider-model-runtime";
 import {AiProvider} from "../model/ai-provider";
 import {Message} from "typescript-telegram-bot-api";
-import {storeToolRankAudit} from "./tool-rank-audit";
 
 export async function runOllama(
     msg: Message,
@@ -157,6 +152,7 @@ export async function runOllama(
     }
 
     const toolMemory: ToolExecutionMemory = new Map();
+    const adapter = getProviderAdapter(AiProvider.OLLAMA);
 
     try {
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -183,7 +179,7 @@ export async function runOllama(
 
             let activeToolNames: string[] = [];
             if ((await getModelCapabilities(AiProvider.OLLAMA, model, "tools"))?.tools?.supported) {
-                const availableOllamaTools: Tool[] = getOllamaTools(msg.from?.id === Environment.CREATOR_ID) as Tool[];
+                const availableOllamaTools: Tool[] = adapter.rankTools(config, {forCreator: msg.from?.id === Environment.CREATOR_ID}) as Tool[];
 
                 aiLog("debug", "ollama.tools.available", {
                     round,
@@ -191,44 +187,18 @@ export async function runOllama(
                     rankerEnabled: !!config.ollamaToolRankerTarget,
                 });
 
-                streamMessage.setStatus(Environment.getSelectingToolsText());
-                await streamMessage.flush();
-                const toolRankStartedAt = Date.now();
-                const toolRankStartedAtIso = new Date().toISOString();
-                const rankerSelection = await new ToolRanker(config).selectTools({
-                        provider: AiProvider.OLLAMA,
-                        userQuery: latestUserTextFromMessages(messages),
-                        availableTools: availableOllamaTools,
-                        round,
-                        signal,
-                    })
-                    .catch(async error => {
-                        streamMessage.clearStatus();
-                        await streamMessage.flush();
-                        await storeToolRankAudit({
-                            streamMessage,
-                            provider: AiProvider.OLLAMA,
-                            model,
-                            round,
-                            startedAt: toolRankStartedAt,
-                            startedAtIso: toolRankStartedAtIso,
-                            error,
-                        });
-                        throw error;
-                    });
-                streamMessage.clearStatus();
-                await streamMessage.flush();
-                await storeToolRankAudit({
-                    streamMessage,
+                const rankResult = await runToolRankStage({
                     provider: AiProvider.OLLAMA,
                     model,
                     round,
-                    startedAt: toolRankStartedAt,
-                    startedAtIso: toolRankStartedAtIso,
-                    selectedTools: rankerSelection.toolNames,
+                    config,
+                    availableTools: availableOllamaTools,
+                    messages,
+                    streamMessage,
+                    signal,
                 });
 
-                const filteredTools = [...new Set(filterRankedTools(availableOllamaTools, rankerSelection.toolNames))];
+                const filteredTools = [...new Set(rankResult.filteredTools as Tool[])];
                 activeToolNames = filteredTools.map(t => t.function.name ?? "");
                 if (filteredTools.length > 0) {
                     request.tools = [...filteredTools];
@@ -256,24 +226,21 @@ export async function runOllama(
                     round,
                     tools: activeToolNames,
                     count: activeToolNames.length,
-                    usedRanker: rankerSelection.usedRanker,
+                    usedRanker: rankResult.usedRanker,
                 });
             }
 
             if (!stream) {
-                const response = await ollama.chat({
+                const response = await adapter.callModel(request, () => ollama.chat({
                     ...request,
                     stream: false
-                });
+                }));
 
                 const message = response.message;
                 const rawContent = message?.content ?? "";
 
                 const nativeCalls = dedupeToolCalls(
-                    normalizeOllamaToolCalls(
-                        message?.tool_calls as readonly OllamaToolCallLike[] | undefined,
-                        round,
-                    ),
+                    adapter.extractToolCalls(message),
                 );
 
                 const responseText = rawContent;
@@ -301,7 +268,7 @@ export async function runOllama(
                     break;
                 }
 
-                const calls = nativeCalls;
+                const calls = adapter.extractToolCalls(message).length ? adapter.extractToolCalls(message) : nativeCalls;
 
                 aiLog("info", "ollama.tool_calls", {
                     round,
@@ -319,11 +286,7 @@ export async function runOllama(
                     })),
                 });
 
-                appendOllamaToolResults(
-                    messages,
-                    calls,
-                    await executeToolBatch(msg.from?.id, calls, streamMessage, toolContext, toolMemory),
-                );
+                adapter.appendToolResults(messages, calls, await executeToolBatch(msg.from?.id, calls, streamMessage, toolContext, toolMemory));
 
                 continue;
             }
@@ -332,10 +295,10 @@ export async function runOllama(
                 round,
                 messageCount: request.messages?.length ?? 0,
             });
-            const response = await ollama.chat({
+            const response = await adapter.callModel(request, () => ollama.chat({
                 ...request,
                 stream: true
-            });
+            }));
 
             aiLog("debug", "ollama.stream.open", {round});
             const calls: ToolCallData[] = [];
@@ -354,10 +317,7 @@ export async function runOllama(
 
                     const localToolCalls: ToolCallData[] = [];
 
-                    localToolCalls.push(...normalizeOllamaToolCalls(
-                        chunk.message.tool_calls as readonly OllamaToolCallLike[] | undefined,
-                        round,
-                    ));
+                    localToolCalls.push(...adapter.extractStreamingToolCalls(chunk.message));
 
                     const newStatus = roundStatus(round, firstRoundStatus, chunk.message.content, localToolCalls, !!chunk.message.thinking);
                     const previousStatus = streamMessage.getStatus();
@@ -377,13 +337,10 @@ export async function runOllama(
                     }
 
                     if (!(chunk.message?.thinking && streamMessage.getStatus() !== Environment.reasoningText)) {
-                        streamMessage.append(chunk.message?.content ?? "");
+                        streamMessage.append(adapter.extractTextDelta(chunk));
                     }
 
-                    calls.push(...normalizeOllamaToolCalls(
-                        chunk.message?.tool_calls as readonly OllamaToolCallLike[] | undefined,
-                        round,
-                    ));
+                    calls.push(...adapter.extractStreamingToolCalls(chunk.message));
 
                     if (chunk.done) {
                         aiLog("debug", "ollama.stream.done", {
@@ -471,9 +428,10 @@ export async function runOllama(
                 }).catch(logError);
             }
 
-            appendOllamaToolResults(messages, calls, toolResults);
+            adapter.appendToolResults(messages, calls, toolResults);
         }
     } finally {
         if (interval) clearInterval(interval);
+        await adapter.finalize().catch(() => undefined);
     }
 }

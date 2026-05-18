@@ -46,27 +46,27 @@
 - [x] Для Mistral сохранять `libraryId`.
 - [x] Для Mistral сохранять uploaded document ids.
 - [x] Для Mistral сохранять source file mapping: local attachment -> Mistral document id.
-- [ ] Добавить единый `providerState` schema для всех providers.
-- [ ] Добавить tests на сериализацию `RagArtifact`.
-- [ ] Добавить tests на то, что internal RAG artifacts не попадают обратно в user document context.
+- [x] Добавить единый `providerState` schema для всех providers.
+- [x] Добавить tests на сериализацию `RagArtifact`.
+- [x] Добавить tests на то, что internal RAG artifacts не попадают обратно в user document context.
 
 ## 4. Вынести provider runners в adapter layer
 
-- [ ] Ввести интерфейс `AiProviderAdapter`.
-- [ ] Методы adapter-а: `mapMessages`, `rankTools`, `callModel`, `extractTextDelta`, `extractToolCalls`, `appendToolResults`, `finalize`.
-- [ ] Реализовать `OpenAiProviderAdapter`.
-- [ ] Реализовать `MistralProviderAdapter`.
-- [ ] Реализовать `OllamaProviderAdapter`.
-- [ ] Перенести provider-specific tool schema mapping внутрь adapter-ов.
-- [ ] Перенести provider-specific streaming parsing внутрь adapter-ов.
-- [ ] Перенести provider-specific tool result append внутрь adapter-ов.
-- [ ] Упростить `runOpenAi`, `runMistral`, `runOllama` или заменить их adapter-driven runner-ом.
-- [ ] Оставить compatibility wrappers для текущих imports.
-- [ ] Добавить tests на adapter contract без реальных API.
+- [x] Ввести интерфейс `AiProviderAdapter`.
+- [x] Методы adapter-а: `mapMessages`, `rankTools`, `callModel`, `extractTextDelta`, `extractToolCalls`, `appendToolResults`, `finalize`.
+- [x] Реализовать `OpenAiProviderAdapter`.
+- [x] Реализовать `MistralProviderAdapter`.
+- [x] Реализовать `OllamaProviderAdapter`.
+- [x] Перенести provider-specific tool schema mapping внутрь adapter-ов.
+- [x] Перенести provider-specific streaming parsing внутрь adapter-ов.
+- [x] Перенести provider-specific tool result append внутрь adapter-ов.
+- [x] Упростить `runOpenAi`, `runMistral`, `runOllama` или заменить их adapter-driven runner-ом.
+- [x] Оставить compatibility wrappers для текущих imports.
+- [x] Добавить tests на adapter contract без реальных API.
 
 ## 5. Сделать tool-ranker полноценным pipeline stage
 
-- [ ] Вынести вызов `ToolRanker.selectTools(...)` из provider runners.
+- [x] Вынести вызов `ToolRanker.selectTools(...)` из provider runners.
 - [ ] Добавить stage `tool_rank`, который работает через provider adapter.
 - [ ] Добавить stage `filter_tools`, который фильтрует provider-specific tools по результату ranker.
 - [ ] Хранить `ToolRankDecision` в `UserRequestPipelineState.toolRankDecisions`.

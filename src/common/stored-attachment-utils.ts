@@ -1,6 +1,7 @@
 import path from "node:path";
 import {Environment} from "./environment";
 import {StoredAttachment} from "../model/stored-attachment";
+export {filterUserVisibleStoredAttachments} from "./attachment-visibility";
 
 export function photoCachePathForUniqueId(uniqueId: string): string {
     return path.join(Environment.DATA_PATH, "cache", "photo", `${uniqueId}.jpg`);
@@ -43,8 +44,4 @@ export function uniqueStoredAttachments(attachments: StoredAttachment[]): Stored
     }
 
     return result;
-}
-
-export function filterUserVisibleStoredAttachments(attachments: StoredAttachment[]): StoredAttachment[] {
-    return attachments.filter(attachment => attachment.scope !== "internal_artifact");
 }

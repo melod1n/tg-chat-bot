@@ -3,18 +3,18 @@ import os from "node:os";
 import path from "node:path";
 import {parse as parseDotEnv} from "dotenv";
 import {z} from "zod";
-import {appLogger} from "../logging/logger";
+import {appLogger} from "../logging/logger.js";
 import type {BoundaryValue, ErrorLike} from "./boundary-types";
 
-import {saveData} from "../db/database";
-import {Answers} from "../model/answers";
-import {ifTrue} from "../util/utils";
-import {AiProvider} from "../model/ai-provider";
-import {ImageHandleFallbackPolicy, ImageHandlePolicy, RateLimitFallbackPolicy} from "./policies";
-import {ToolRankerFallbackPolicy} from "./policies";
-import type {ToolCallData} from "../ai/unified-ai-runner";
-import {PYTHON_INTERPRETER_TOOL_NAME} from "../ai/tools/python-interpretator";
-import {Localization, type LocalizationParams} from "./localization";
+import {saveData} from "../db/database.js";
+import {Answers} from "../model/answers.js";
+import {ifTrue} from "../util/utils.js";
+import {AiProvider} from "../model/ai-provider.js";
+import {ImageHandleFallbackPolicy, ImageHandlePolicy, RateLimitFallbackPolicy} from "./policies.js";
+import {ToolRankerFallbackPolicy} from "./policies.js";
+import type {ToolCallData} from "../ai/unified-ai-runner.js";
+import {PYTHON_INTERPRETER_TOOL_NAME} from "../ai/tools/python-interpretator.js";
+import {Localization, type LocalizationParams} from "./localization.js";
 
 type EnvRecord = Record<string, string>;
 type StringEnumLike = Record<string, string>;
