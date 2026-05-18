@@ -27,6 +27,18 @@ The bot initializes and migrates its database schema automatically on startup.
 `/exportdb` sends the SQLite file when available, plus a `.sql` dump and a JSON backup.
 `/importdb` restores the database from the JSON backup format.
 
+MCP tool servers can be configured through `MCP_SERVERS` in `.env`. Use a JSON array with `stdio` or `http` transports. Example:
+
+```bash
+MCP_SERVERS=[{"name":"local-tools","transport":"stdio","command":"node","args":["./mcp-server.js"]}]
+```
+
+If you want to disable all built-in local tools and use only MCP tools, set:
+
+```bash
+DISABLE_LOCAL_TOOLS=true
+```
+
 For local Ollama document RAG, install an embedding model locally and set it in `.env`:
 
 ```bash

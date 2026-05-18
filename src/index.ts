@@ -79,6 +79,7 @@ import {AIAudit} from "./commands/ai-audit.js";
 import {AIMetrics} from "./commands/ai-metrics.js";
 import {AIRequests} from "./commands/ai-requests.js";
 import {cleanupStaleRagProviderState} from "./ai/rag-retention.js";
+import {initializeMcpTools, shutdownMcpTools} from "./ai/mcp/mcp-registry.js";
 
 process.setUncaughtExceptionCaptureCallback(logError);
 
@@ -236,11 +237,17 @@ export async function shutdown(signal: NodeJS.Signals | "manual") {
         logError(error instanceof Error ? error : String(error));
     } finally {
         try {
-            await DatabaseManager.close();
+            await shutdownMcpTools();
         } catch (error) {
             logError(error instanceof Error ? error : String(error));
+        } finally {
+            try {
+                await DatabaseManager.close();
+            } catch (error) {
+                logError(error instanceof Error ? error : String(error));
+            }
+            process.exit(0);
         }
-        process.exit(0);
     }
 }
 
@@ -280,6 +287,7 @@ async function main() {
 
     await measureStartupStep("cleanup_internal_artifacts", () => cleanupInternalArtifactCache(), () => ({retentionDays: 14}));
     await measureStartupStep("cleanup_stale_rag_provider_state", () => cleanupStaleRagProviderState(), () => ({retentionDays: 14}));
+    await measureStartupStep("mcp.initialize", () => initializeMcpTools());
     await measureStartupStep("observability.snapshot", async () => {
         const [aiRequests, attachments, artifacts, requestAudits] = await Promise.all([
             DatabaseManager.getAllAiRequests(),

@@ -352,6 +352,20 @@ function toolNamesFromTool(tool: BoundaryValue): string[] {
     return name ? [name] : [];
 }
 
+function fallbackToolInfoFromTool(toolValue: BoundaryValue, name: string): ToolRankerToolInfo | undefined {
+    if (!isRecord(toolValue)) return undefined;
+
+    const fn = isRecord(toolValue.function) ? toolValue.function : undefined;
+    const description = asOptionalString(fn?.description ?? toolValue.description)
+        ?? `Tool ${name}.`;
+
+    return tool(
+        name,
+        description,
+        "Use when the tool description matches the user's request.",
+    );
+}
+
 export function getToolRankerToolInfo(name: string): ToolRankerToolInfo | undefined {
     return TOOL_RANKER_TOOL_INFOS[name as ToolRankerToolName];
 }
@@ -363,10 +377,25 @@ export function getToolRankerToolInfos(names: readonly string[]): ToolRankerTool
 }
 
 export function getToolRankerAvailableToolInfos(availableTools: readonly BoundaryValue[]): ToolRankerToolInfo[] {
-    return getToolRankerToolInfos([
-        "no_tool",
-        ...availableTools.flatMap(toolNamesFromTool),
-    ]);
+    const infos = new Map<string, ToolRankerToolInfo>();
+
+    infos.set("no_tool", TOOL_RANKER_TOOL_INFOS.no_tool);
+
+    for (const tool of availableTools) {
+        for (const name of toolNamesFromTool(tool)) {
+            if (infos.has(name)) continue;
+
+            const known = getToolRankerToolInfo(name);
+            const fallback = fallbackToolInfoFromTool(tool, name);
+            if (known) {
+                infos.set(name, known);
+            } else if (fallback) {
+                infos.set(name, fallback);
+            }
+        }
+    }
+
+    return [...infos.values()];
 }
 
 function renderToolLine(tool: ToolRankerToolInfo, compact: boolean): string {
@@ -471,7 +500,7 @@ export function buildToolRankerSystemPrompt(params: {
     const includeExamples = params.includeExamples ?? false;
     const maxExamplesPerTool = Math.max(0, params.maxExamplesPerTool ?? 1);
     const compact = params.compact ?? true;
-    const availableTools = getToolRankerToolInfos(params.availableTools.map(tool => tool.name));
+    const availableTools = params.availableTools;
     const availableToolNames = availableTools.map(tool => tool.name);
 
     const sections: string[] = [

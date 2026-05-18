@@ -214,6 +214,8 @@ const RuntimeEnvSchema = z.object({
     SEND_TIME_TOOK: optionalBooleanSchema,
 
     ENABLE_PYTHON_INTERPRETER: optionalBooleanSchema,
+    DISABLE_LOCAL_TOOLS: optionalBooleanSchema,
+    MCP_SERVERS: optionalStringSchema,
 
     OLLAMA_API_KEY: optionalStringSchema,
     OLLAMA_ADDRESS: optionalStringSchema,
@@ -308,6 +310,8 @@ export class Environment {
     static SEND_TIME_TOOK: boolean = false;
 
     static ENABLE_PYTHON_INTERPRETER: boolean = false;
+    static DISABLE_LOCAL_TOOLS: boolean = false;
+    static MCP_SERVERS?: string;
 
     static OLLAMA_API_KEY?: string;
     static OLLAMA_ADDRESS?: string;
@@ -1842,6 +1846,8 @@ export class Environment {
         Environment.SEND_TIME_TOOK = env.SEND_TIME_TOOK ?? false;
 
         Environment.ENABLE_PYTHON_INTERPRETER = env.ENABLE_PYTHON_INTERPRETER ?? false;
+        Environment.DISABLE_LOCAL_TOOLS = env.DISABLE_LOCAL_TOOLS ?? false;
+        Environment.MCP_SERVERS = env.MCP_SERVERS;
 
         Environment.OLLAMA_API_KEY = env.OLLAMA_API_KEY;
         Environment.OLLAMA_ADDRESS = env.OLLAMA_ADDRESS;

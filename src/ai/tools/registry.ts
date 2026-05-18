@@ -45,6 +45,7 @@ import {
     writeFileChunk,
     writeFileChunkTool
 } from "./files";
+import {getMcpToolHandlers, getMcpToolPrompts, getMcpTools} from "../mcp/mcp-registry.js";
 
 export const defaultTools: AiTool[] = [
     getCurrentDateTimeTool,
@@ -72,21 +73,15 @@ export const fileTools = [
     deletePathTool,
 ] satisfies AiTool[];
 
-// export const notesFileTools: AiTool[] = [
-//     createNoteTool,
-//     listNotesTool,
-//     getNoteContentTool,
-//     updateNoteContentTool,
-//     deleteNoteTool,
-//     sendNoteAsFileTool,
-//     searchNotesTool
-// ]
-
 export const getTools = (forCreator?: boolean) => {
-    const tools: AiTool[] = [
+    const tools: AiTool[] = Environment.DISABLE_LOCAL_TOOLS ? [] : [
         ...defaultTools,
-        // ...notesFileTools
     ];
+
+    if (Environment.DISABLE_LOCAL_TOOLS) {
+        tools.push(...getMcpTools());
+        return tools;
+    }
 
     if (Environment.BRAVE_SEARCH_API_KEY) {
         tools.push(webSearchTool);
@@ -109,6 +104,8 @@ export const getTools = (forCreator?: boolean) => {
             tools.push(shellExecuteTool);
         }
     }
+
+    tools.push(...getMcpTools());
 
     return tools;
 };
@@ -136,19 +133,19 @@ export const fileToolHandlers = {
 
 export const getToolHandlers = () => {
     let handlers: Record<string, ToolHandler> = {
+        ...getMcpToolHandlers(),
+    };
+
+    if (Environment.DISABLE_LOCAL_TOOLS) {
+        return handlers;
+    }
+
+    handlers = {
+        ...handlers,
         get_datetime: getCurrentDateTime,
         get_financial_market_data: getMarketRates,
 
-        // create_note: createNote,
-        // list_notes: listNotes,
-        // get_note_content: getNoteContent,
-        // update_note_content: updateNoteContent,
-        // delete_note: deleteNote,
-        // send_note_as_file: sendNoteAsFile,
-        // search_notes: searchNotes,
-
         ...fileToolHandlers,
-
 
         python_interpreter: runPythonInterpreter,
 
@@ -157,13 +154,16 @@ export const getToolHandlers = () => {
         web_search: webSearch,
 
         get_weather: getWeather,
-
     };
 
     return handlers;
 };
 
 export function getToolPrompts(toolNames: string[]): string[] {
+    if (Environment.DISABLE_LOCAL_TOOLS) {
+        return getMcpToolPrompts(toolNames);
+    }
+
     const prompts: string[] = [];
 
     for (const toolName of toolNames) {
@@ -185,5 +185,6 @@ export function getToolPrompts(toolNames: string[]): string[] {
         }
     }
 
+    prompts.push(...getMcpToolPrompts(toolNames));
     return prompts;
 }
