@@ -2055,7 +2055,24 @@ export class DatabaseManager {
     }
 
     private static async migrateLegacyNormalizedTables(): Promise<void> {
-        const messages = await DatabaseManager.getAllMessages();
+        // Do not call getAllMessages() here: it awaits DatabaseManager.ready, which
+        // is the promise currently waiting on ensureSchema(). That creates a
+        // self-deadlock during startup migrations.
+        const messages = await DatabaseManager.query<MessageDbRow>(`
+            SELECT
+                "id",
+                "chatId",
+                "replyToMessageId",
+                "fromId",
+                "text",
+                "quoteText",
+                "date",
+                "deletedByBotAt",
+                "attachments",
+                "pipelineAudit"
+            FROM "messages"
+            ORDER BY "chatId", "id"
+        `);
         const attachments = messages.flatMap(message => DatabaseManager.attachmentRowsFromMessageRow(message));
         const artifacts = messages.flatMap(message => DatabaseManager.artifactRowsFromMessageRow(message));
         const requestAudits = messages.flatMap(message => DatabaseManager.requestAuditRowsFromMessageRow(message));
