@@ -73,35 +73,62 @@ export const fileTools = [
     deletePathTool,
 ] satisfies AiTool[];
 
+function parseToolNameSet(raw: string | undefined): Set<string> | undefined {
+    if (!raw?.trim()) return undefined;
+
+    const names = raw
+        .split(",")
+        .map(item => item.trim().toLowerCase())
+        .filter(Boolean);
+
+    return names.length ? new Set(names) : undefined;
+}
+
+function isLocalToolEnabled(toolName: string): boolean {
+    if (Environment.DISABLE_LOCAL_TOOLS) return false;
+
+    const allowlist = parseToolNameSet(Environment.LOCAL_TOOL_ALLOWLIST);
+    if (allowlist && !allowlist.has(toolName.toLowerCase())) return false;
+
+    const denylist = parseToolNameSet(Environment.LOCAL_TOOL_DENYLIST);
+    if (denylist && denylist.has(toolName.toLowerCase())) return false;
+
+    return true;
+}
+
+function filterEnabledTools(tools: AiTool[]): AiTool[] {
+    return tools.filter(tool => isLocalToolEnabled(tool.function.name));
+}
+
 export const getTools = (forCreator?: boolean) => {
-    const tools: AiTool[] = Environment.DISABLE_LOCAL_TOOLS ? [] : [
-        ...defaultTools,
-    ];
+    const tools: AiTool[] = [];
 
     if (Environment.DISABLE_LOCAL_TOOLS) {
         tools.push(...getMcpTools());
         return tools;
     }
 
+    tools.push(...filterEnabledTools(defaultTools));
+
     if (Environment.BRAVE_SEARCH_API_KEY) {
-        tools.push(webSearchTool);
+        tools.push(...filterEnabledTools([webSearchTool]));
     }
 
     if (Environment.OPEN_WEATHER_MAP_API_KEY) {
-        tools.push(getWeatherTool);
+        tools.push(...filterEnabledTools([getWeatherTool]));
     }
 
     if (Environment.FILE_TOOLS_ROOT_DIR && Environment.ENABLE_FS_TOOLS) {
-        tools.push(...fileTools);
+        tools.push(...filterEnabledTools(fileTools));
     }
 
     if (forCreator) {
         if (Environment.ENABLE_PYTHON_INTERPRETER) {
-            tools.push(pythonInterpreterTool);
+            tools.push(...filterEnabledTools([pythonInterpreterTool]));
         }
 
         if (Environment.ENABLE_UNSAFE_EVAL) {
-            tools.push(shellExecuteTool);
+            tools.push(...filterEnabledTools([shellExecuteTool]));
         }
     }
 
@@ -132,7 +159,7 @@ export const fileToolHandlers = {
 };
 
 export const getToolHandlers = () => {
-    let handlers: Record<string, ToolHandler> = {
+    const handlers: Record<string, ToolHandler> = {
         ...getMcpToolHandlers(),
     };
 
@@ -140,21 +167,29 @@ export const getToolHandlers = () => {
         return handlers;
     }
 
-    handlers = {
-        ...handlers,
-        get_datetime: getCurrentDateTime,
-        get_financial_market_data: getMarketRates,
+    if (isLocalToolEnabled("get_datetime")) handlers.get_datetime = getCurrentDateTime;
+    if (isLocalToolEnabled("get_financial_market_data")) handlers.get_financial_market_data = getMarketRates;
 
-        ...fileToolHandlers,
+    if (isLocalToolEnabled("read_file")) handlers.read_file = readFile;
+    if (isLocalToolEnabled("list_directory")) handlers.list_directory = listDirectory;
+    if (isLocalToolEnabled("search_files")) handlers.search_files = searchFiles;
+    if (isLocalToolEnabled("create_file")) handlers.create_file = createFile;
+    if (isLocalToolEnabled("begin_file_write")) handlers.begin_file_write = beginFileWrite;
+    if (isLocalToolEnabled("write_file_chunk")) handlers.write_file_chunk = writeFileChunk;
+    if (isLocalToolEnabled("finish_file_write")) handlers.finish_file_write = finishFileWrite;
+    if (isLocalToolEnabled("cancel_file_write")) handlers.cancel_file_write = cancelFileWrite;
+    if (isLocalToolEnabled("send_file_as_attachment")) handlers.send_file_as_attachment = sendFileAsAttachment;
+    if (isLocalToolEnabled("create_directory")) handlers.create_directory = createDirectory;
+    if (isLocalToolEnabled("copy_path")) handlers.copy_path = copyPath;
+    if (isLocalToolEnabled("update_file")) handlers.update_file = updateFile;
+    if (isLocalToolEnabled("edit_file_patch")) handlers.edit_file_patch = editFilePatch;
+    if (isLocalToolEnabled("rename_path")) handlers.rename_path = renamePath;
+    if (isLocalToolEnabled("delete_path")) handlers.delete_path = deletePath;
 
-        python_interpreter: runPythonInterpreter,
-
-        shell_execute: shellExecute,
-
-        web_search: webSearch,
-
-        get_weather: getWeather,
-    };
+    if (isLocalToolEnabled("python_interpreter")) handlers.python_interpreter = runPythonInterpreter;
+    if (isLocalToolEnabled("shell_execute")) handlers.shell_execute = shellExecute;
+    if (isLocalToolEnabled("web_search")) handlers.web_search = webSearch;
+    if (isLocalToolEnabled("get_weather")) handlers.get_weather = getWeather;
 
     return handlers;
 };
@@ -167,6 +202,10 @@ export function getToolPrompts(toolNames: string[]): string[] {
     const prompts: string[] = [];
 
     for (const toolName of toolNames) {
+        if (!isLocalToolEnabled(toolName)) {
+            continue;
+        }
+
         if (!prompts.includes(fileToolsToolPrompt) &&
             fileTools.map(t => t.function.name).includes(toolName)) {
             prompts.push(fileToolsToolPrompt);

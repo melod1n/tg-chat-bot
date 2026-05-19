@@ -39,6 +39,13 @@ If you want to disable all built-in local tools and use only MCP tools, set:
 DISABLE_LOCAL_TOOLS=true
 ```
 
+If you want a partial filter instead, use tool names:
+
+```bash
+LOCAL_TOOL_ALLOWLIST=get_datetime,web_search
+LOCAL_TOOL_DENYLIST=shell_execute,python_interpreter
+```
+
 For local Ollama document RAG, install an embedding model locally and set it in `.env`:
 
 ```bash
