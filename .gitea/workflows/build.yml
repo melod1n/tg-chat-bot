@@ -1,0 +1,29 @@
+name: TypeScript Bot CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: node
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Test
+        run: pnpm run test --if-present
+
+      - name: Build
+        run: pnpm run build
