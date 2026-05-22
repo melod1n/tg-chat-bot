@@ -12,6 +12,7 @@ import type {
 } from "openai/resources/responses/responses";
 import {createOpenAiClient} from "./ai-runtime-target";
 import {aiLog, aiLogDuration, aiLogMessageIdentity, aiLogProviderTarget, aiLogToolCall} from "../logging/ai-logger";
+import {buildUserMemoryPrompt} from "./tools/user-memory.js";
 
 import {
     AsyncIterableStream,
@@ -29,23 +30,21 @@ import {
     showOpenAiGeneratedImage,
     ToolCallData,
     ToolExecutionMemory,
-    errorMessage,
     allToolSchemaNames
 } from "./unified-ai-runner.shared";
 import {executeToolBatchWithAdapter} from "./tool-batch-runner";
 import {decideToolLoopContinuation} from "./tool-loop-control";
 import {runToolLoopRounds} from "./tool-loop-runner";
 import {runSingleModelRequest} from "./model-call-stage";
-import {bot} from "../index";
-import fs from "node:fs";
-import path from "node:path";
+import {ensureToolsSelected} from "./tool-mappers.js";
+import {MEMORY_TOOL_NAMES} from "./tools/user-memory.js";
 import {logError} from "../util/utils";
-import {SendFileAttachmentResult, SendFileAttachmentResultSchema} from "./tools/files";
 import {DEFAULT_AI_RESPONSE_LANGUAGE} from "../common/user-ai-settings";
 import {AiDownloadedFile} from "./telegram-attachments";
 import {AiProvider} from "../model/ai-provider";
 import {getProviderAdapter} from "./provider-adapters";
 import {runToolRankStage} from "./tool-rank-stage";
+import {tryToUploadFiles} from "./openai-upload-files.js";
 
 export async function runOpenAi(
     msg: Message,
@@ -75,6 +74,7 @@ export async function runOpenAi(
         DEFAULT_AI_RESPONSE_LANGUAGE,
         false,
         config.openAiChatTarget.systemPromptAdditions,
+        await buildUserMemoryPrompt(msg.from?.id),
     );
 
     aiLog("info", "openai.run.start", {
@@ -115,9 +115,13 @@ export async function runOpenAi(
                             tools.unshift(fileSearchTool);
                         }
                     }
-                    return tools.length ? tools : undefined;
+                    const withMemory = ensureToolsSelected(availableTools, tools, MEMORY_TOOL_NAMES);
+                    return withMemory.length ? withMemory : undefined;
                 })()
-                : (filteredTools.length ? filteredTools : undefined);
+                : (() => {
+                    const withMemory = ensureToolsSelected(availableTools, filteredTools, MEMORY_TOOL_NAMES);
+                    return withMemory.length ? withMemory : undefined;
+                })();
 
             if (!stream) {
                 const request: ResponseCreateParamsNonStreaming = {
@@ -187,7 +191,11 @@ export async function runOpenAi(
                     userId: msg.from?.id,
                     toolCalls,
                     streamMessage,
-                    toolContext,
+                    toolContext: {
+                        ...toolContext,
+                        provider: AiProvider.OPENAI,
+                        runtimeTarget: config.openAiChatTarget,
+                    },
                     toolMemory,
                     adapter,
                     appendTargets: [toolOutputs],
@@ -397,7 +405,11 @@ export async function runOpenAi(
                 userId: msg.from?.id,
                 toolCalls,
                 streamMessage,
-                toolContext,
+                toolContext: {
+                    ...toolContext,
+                    provider: AiProvider.OPENAI,
+                    runtimeTarget: config.openAiChatTarget,
+                },
                 toolMemory,
                 adapter,
                 appendTargets: [toolOutputs],
@@ -501,72 +513,6 @@ async function cleanupOpenAiDocumentRag(openAi: OpenAI, vectorStoreId: string, f
     await openAi.vectorStores.delete(vectorStoreId).catch(() => undefined);
     for (const fileId of fileIds) {
         await openAi.files.delete(fileId).catch(() => undefined);
-    }
-}
-
-async function tryToUploadFiles(
-    msg: Message,
-    toolResults: string[]
-): Promise<
-    | { found: false }
-    | { found: true, uploaded: true }
-    | { found: boolean, uploaded: false, error: string, toolIndex: number }
-> {
-    let sendFileAttachment: {
-        result: SendFileAttachmentResult & { success: true },
-        toolIndex: number
-    } | null = null;
-
-    let found = false;
-
-    try {
-        for (const [index, toolResult] of toolResults.entries()) {
-            const raw = JSON.parse(toolResult);
-            const res = SendFileAttachmentResultSchema.safeParse(raw);
-
-            if (res.success) {
-                found = true;
-
-                if (res.data.success) {
-                    sendFileAttachment = {result: res.data, toolIndex: index};
-                }
-            }
-        }
-
-        if (!found) {
-            return {found: false};
-        }
-
-        const attachmentRoot = Environment.FILE_TOOLS_ROOT_DIR;
-        const attachmentPath = attachmentRoot
-            ? path.join(
-                attachmentRoot,
-                String(msg.from?.id),
-                sendFileAttachment?.result?.attachment?.relativePath ?? "",
-            )
-            : "";
-
-        if (!fs.existsSync(attachmentPath)) {
-            throw new Error(`Attachment file does not exist: ${attachmentPath}`);
-        }
-
-        await bot.sendDocument({
-            chat_id: msg.chat.id,
-            reply_parameters: {
-                message_id: msg.message_id,
-            },
-            document: fs.createReadStream(attachmentPath),
-        });
-
-        return {found: true, uploaded: true};
-    } catch (e) {
-        logError(e instanceof Error ? e : String(e));
-        return {
-            found: found,
-            uploaded: false,
-            error: errorMessage(e instanceof Error ? e : String(e)),
-            toolIndex: sendFileAttachment?.toolIndex ?? -1
-        };
     }
 }
 

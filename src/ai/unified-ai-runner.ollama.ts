@@ -15,6 +15,8 @@ import {createOllamaClient} from "./ai-runtime-target";
 import {aiLog, aiLogDuration, aiLogMessageIdentity, aiLogProviderTarget, aiLogToolCall} from "../logging/ai-logger";
 import {getProviderAdapter} from "./provider-adapters";
 import {runToolRankStage} from "./tool-rank-stage";
+import {ensureToolsSelected} from "./tool-mappers.js";
+import {MEMORY_TOOL_NAMES} from "./tools/user-memory.js";
 
 import {
     allToolSchemaNames,
@@ -203,7 +205,7 @@ export async function runOllama(
                     signal,
                 });
 
-                const filteredTools = [...new Set(rankResult.filteredTools as Tool[])];
+                const filteredTools = [...new Set(ensureToolsSelected(availableOllamaTools, rankResult.filteredTools as Tool[], MEMORY_TOOL_NAMES) as Tool[])];
                 activeToolNames = filteredTools.map(t => t.function.name ?? "");
                 if (filteredTools.length > 0) {
                     request.tools = [...filteredTools];
@@ -297,7 +299,11 @@ export async function runOllama(
                     userId: msg.from?.id,
                     toolCalls: calls,
                     streamMessage,
-                    toolContext,
+                    toolContext: {
+                        ...toolContext,
+                        provider: AiProvider.OLLAMA,
+                        runtimeTarget: target,
+                    },
                     toolMemory,
                     adapter,
                     appendTargets: [messages],
@@ -429,7 +435,11 @@ export async function runOllama(
                 userId: msg.from?.id,
                 toolCalls: calls,
                 streamMessage,
-                toolContext,
+                toolContext: {
+                    ...toolContext,
+                    provider: AiProvider.OLLAMA,
+                    runtimeTarget: target,
+                },
                 toolMemory,
                 adapter,
                 appendTargets: [messages],

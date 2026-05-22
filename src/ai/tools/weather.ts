@@ -1,11 +1,11 @@
 import axios from "axios";
-import {toolsLogger} from "./tool-logger";
+import {toolsLogger} from "./tool-logger.js";
 
 const logger = toolsLogger.child("weather");
-import {Environment} from "../../common/environment";
-import {logError} from "../../util/utils";
-import {AiJsonObject, AiTool} from "../tool-types";
-import {asNonEmptyString} from "./utils";
+import {Environment} from "../../common/environment.js";
+import {logError} from "../../util/utils.js";
+import {AiJsonObject, AiTool} from "../tool-types.js";
+import {asNonEmptyString} from "./utils.js";
 
 export const getWeatherTool = {
     type: "function",

@@ -4,7 +4,7 @@ import path from "node:path";
 import type {BoundaryValue} from "../common/boundary-types";
 import {AiProvider} from "../model/ai-provider.js";
 import {ToolRankerFallbackPolicy} from "../common/policies.js";
-import {Environment} from "../common/environment.js";
+import {Environment, type OpenAiBackend} from "../common/environment.js";
 import {delay, logError, replyToMessage} from "../util/utils.js";
 import {MessageStore} from "../common/message-store.js";
 import type {OpenAiResponseTool} from "./tool-mappers.js";
@@ -274,6 +274,7 @@ export type RuntimeConfigSnapshot = {
     openAiChatTarget: AiRuntimeTarget;
     openAiImageTarget: AiRuntimeTarget;
     openAiToolRankerTarget?: AiRuntimeTarget;
+    openAiBackend: OpenAiBackend;
 };
 
 export function snapshotRuntimeConfig(): RuntimeConfigSnapshot {
@@ -307,7 +308,12 @@ export function snapshotRuntimeConfig(): RuntimeConfigSnapshot {
         openAiChatTarget: resolveAiRuntimeTarget(AiProvider.OPENAI, "chat"),
         openAiImageTarget: resolveAiRuntimeTarget(AiProvider.OPENAI, "outputImages"),
         openAiToolRankerTarget: resolveAiRuntimeTarget(AiProvider.OPENAI, "toolRank"),
+        openAiBackend: Environment.OPENAI_BACKEND,
     };
+}
+
+export function isOpenAiCompatibleBackend(config: RuntimeConfigSnapshot): boolean {
+    return config.openAiBackend === "compatible";
 }
 
 export function getMessageImageParts(part: MessagePart): MessageImagePart[] {
@@ -382,11 +388,13 @@ export function buildSystemInstruction(
     responseLanguage: UserAiResponseLanguage,
     includePythonToolPrompt: boolean,
     additions?: string | null,
+    memoryInstruction?: string | null,
 ): string {
     return [
         config.useSystemPrompt ? getResponseLanguageInstruction(responseLanguage) : null,
         config.systemPrompt && config.useSystemPrompt ? config.systemPrompt : null,
         additions?.trim() ? additions.trim() : null,
+        memoryInstruction?.trim() ? memoryInstruction.trim() : null,
         includePythonToolPrompt ? pythonInterpreterToolPrompt : null,
     ].filter(Boolean).join("\n\n");
 }
@@ -1117,19 +1125,31 @@ export async function executeTool(
     }
 }
 
-export function toolResourceKeys(toolCall: ToolCallData): string[] {
+export function toolResourceKeys(toolCall: ToolCallData, userId?: number | undefined | null): string[] {
     const args = safeJsonParseObject(toolCall.argumentsText);
     const pathValue = typeof args.path === "string" ? args.path : undefined;
     const sourcePath = typeof args.sourcePath === "string" ? args.sourcePath : undefined;
     const targetPath = typeof args.targetPath === "string" ? args.targetPath : undefined;
+    const memoryScope = toolCall.name.endsWith("_user_info") ? "user"
+        : toolCall.name.endsWith("_system_info") ? "system"
+            : undefined;
 
     switch (toolCall.name) {
+        case "read_user_info":
+        case "read_system_info":
         case "get_datetime":
         case "web_search":
         case "get_weather":
         case "read_file":
         case "list_directory":
             return [];
+        case "add_user_info":
+        case "add_system_info":
+        case "remove_user_info":
+        case "remove_system_info":
+        case "replace_user_info":
+        case "replace_system_info":
+            return userId && memoryScope ? [`memory:${userId}:${memoryScope}`] : [];
         case "create_file":
         case "create_directory":
         case "update_file":
@@ -1162,7 +1182,7 @@ export async function executeScheduledTool(
     message: TelegramStreamMessage,
     context: ToolRuntimeContext,
 ): Promise<string> {
-    const keys = toolResourceKeys(toolCall);
+    const keys = toolResourceKeys(toolCall, userId);
     if (!keys.length) return executeTool(userId, toolCall, message, context);
     return runWithToolLocks(keys, () => executeTool(userId, toolCall, message, context));
 }

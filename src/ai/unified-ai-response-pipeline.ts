@@ -19,6 +19,7 @@ import {
 } from "./unified-ai-runner.shared";
 import {runToolRankStage} from "./tool-rank-stage";
 import {runOpenAi} from "./unified-ai-runner.openai";
+import {runOpenAiCompatible} from "./unified-ai-runner.openai-compatible";
 import {runOllama} from "./unified-ai-runner.ollama";
 import {runMistral} from "./unified-ai-runner.mistral";
 import {summarizeModelOutput} from "./response-model-output";
@@ -80,6 +81,21 @@ async function runProviderModelCall(params: {
 
     switch (options.provider) {
         case AiProvider.OPENAI:
+            if (config.openAiBackend === "compatible") {
+                await runOpenAiCompatible(
+                    options.msg,
+                    prepared.chatMessages as OpenAIChatMessage[],
+                    streamMessage,
+                    signal,
+                    options.stream ?? true,
+                    options.msg,
+                    config,
+                    prepared.toolContext,
+                    downloads,
+                );
+                return;
+            }
+
             await runOpenAi(
                 options.msg,
                 prepared.chatMessages as OpenAIChatMessage[],

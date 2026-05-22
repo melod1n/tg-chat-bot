@@ -5,6 +5,11 @@ const {
     extractOpenAiToolCalls,
     extractOpenAiStreamingToolCalls,
     extractOpenAiTextDelta,
+    extractOpenAiChatToolCalls,
+    extractOpenAiChatStreamingToolCalls,
+    extractOpenAiChatTextDelta,
+    mergeToolCallChunks,
+    normalizeStreamingTextDelta,
     extractMistralToolCalls,
     extractMistralTextDelta,
     extractOllamaToolCalls,
@@ -40,6 +45,62 @@ test("openai contract extracts text delta and function calls", () => {
     assert.equal(streamed.length, 1);
     assert.equal(streamed[0].id, "call-2");
     assert.equal(streamed[0].name, "search_files");
+});
+
+test("openai chat contract extracts text delta and tool calls", () => {
+    assert.equal(extractOpenAiChatTextDelta({choices: [{delta: {content: "hello chat"}}]}), "hello chat");
+    assert.equal(normalizeStreamingTextDelta("hel", "hello"), "lo");
+    assert.equal(normalizeStreamingTextDelta("hel", "lo"), "lo");
+
+    const calls = extractOpenAiChatToolCalls({
+        choices: [{
+            message: {
+                tool_calls: [{
+                    id: "chat-1",
+                    function: {
+                        name: "read_user_info",
+                        arguments: "{\"userId\":123}",
+                    },
+                }],
+            },
+        }],
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].id, "chat-1");
+    assert.equal(calls[0].name, "read_user_info");
+
+    const streamed = extractOpenAiChatStreamingToolCalls({
+        choices: [{
+            delta: {
+                tool_calls: [{
+                    index: 0,
+                    id: "chat-2",
+                    function: {
+                        name: "write_note",
+                        arguments: "{\"text\":",
+                    },
+                }],
+            },
+        }],
+    });
+
+    assert.equal(streamed.length, 1);
+    assert.equal(streamed[0].id, "chat-2");
+    assert.equal(streamed[0].name, "write_note");
+    assert.equal(streamed[0].argumentsText, "{\"text\":");
+
+    const merged = mergeToolCallChunks([
+        {id: "chat-2", name: "", argumentsText: "{\"text\":"},
+    ], [{
+        id: "chat-2",
+        name: "write_note",
+        argumentsText: "\"hello\"}",
+    }]);
+
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0].name, "write_note");
+    assert.equal(merged[0].argumentsText, "{\"text\":\"hello\"}");
 });
 
 test("mistral contract extracts content and tool calls", () => {

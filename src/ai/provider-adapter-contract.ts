@@ -14,6 +14,12 @@ function normalizeToolArguments(value: unknown): string {
     return JSON.stringify(value ?? {});
 }
 
+function normalizeToolArgumentsChunk(value: unknown): string {
+    if (typeof value === "string") return value;
+    if (value === undefined || value === null) return "";
+    return JSON.stringify(value);
+}
+
 export function extractOpenAiToolCalls(response: unknown): ToolCallData[] {
     const output = isRecord(response) && Array.isArray(response.output) ? response.output : [];
 
@@ -30,6 +36,86 @@ export function extractOpenAiToolCalls(response: unknown): ToolCallData[] {
 export function extractOpenAiTextDelta(input: unknown): string {
     const event = input as ResponseStreamEvent | undefined;
     return event?.type === "response.output_text.delta" ? event.delta ?? "" : "";
+}
+
+export function extractOpenAiChatTextDelta(input: unknown): string {
+    const event = isRecord(input) ? input : undefined;
+    const choice = event && Array.isArray(event.choices) && isRecord(event.choices[0]) ? event.choices[0] : undefined;
+    const delta = isRecord(choice?.delta) ? choice.delta : undefined;
+    const content = delta && typeof delta.content === "string" ? delta.content : "";
+    return content;
+}
+
+export function normalizeStreamingTextDelta(existingText: string, deltaText: string): string {
+    if (!deltaText) return "";
+    if (!existingText) return deltaText;
+
+    if (deltaText.startsWith(existingText)) {
+        return deltaText.slice(existingText.length);
+    }
+
+    return deltaText;
+}
+
+export function extractOpenAiChatToolCalls(response: unknown): ToolCallData[] {
+    const record = isRecord(response) ? response : undefined;
+    const choice = record && Array.isArray(record.choices) && isRecord(record.choices[0]) ? record.choices[0] : undefined;
+    const message = isRecord(choice?.message) ? choice.message : undefined;
+    const toolCalls = message && Array.isArray(message.tool_calls) ? message.tool_calls : [];
+
+    return toolCalls
+        .filter((item, index) => isRecord(item) && ((typeof item.id === "string") || typeof item.index === "number" || index >= 0))
+        .map((item, index) => {
+            const call = isRecord(item) ? item : {};
+            const fn = isRecord(call.function) ? call.function : undefined;
+            const name = typeof fn?.name === "string" ? fn.name : typeof call.name === "string" ? call.name : "";
+            return {
+                id: normalizeToolCallId(call.id, `openai_chat_${typeof call.index === "number" ? call.index : index}`),
+                name,
+                argumentsText: normalizeToolArguments(fn?.arguments ?? call.arguments),
+            };
+        })
+        .filter(call => call.name.length > 0);
+}
+
+export function extractOpenAiChatStreamingToolCalls(input: unknown): ToolCallData[] {
+    const event = isRecord(input) ? input : undefined;
+    const choice = event && Array.isArray(event.choices) && isRecord(event.choices[0]) ? event.choices[0] : undefined;
+    const delta = isRecord(choice?.delta) ? choice.delta : undefined;
+    const toolCalls = Array.isArray(delta?.tool_calls) ? delta.tool_calls : [];
+
+    return toolCalls
+        .map((item, index) => {
+            const call = isRecord(item) ? item : {};
+            const fn = isRecord(call.function) ? call.function : undefined;
+            const name = typeof fn?.name === "string" ? fn.name : typeof call.name === "string" ? call.name : "";
+            return {
+                id: normalizeToolCallId(call.id, `openai_chat_${typeof call.index === "number" ? call.index : index}`),
+                name,
+                argumentsText: normalizeToolArgumentsChunk(fn?.arguments ?? call.arguments),
+            };
+        })
+        .filter(call => call.id.length > 0);
+}
+
+export function mergeToolCallChunks(existing: ToolCallData[], chunks: ToolCallData[]): ToolCallData[] {
+    const merged = new Map<string, ToolCallData>(existing.map(call => [call.id, {...call}]));
+
+    for (const chunk of chunks) {
+        const current = merged.get(chunk.id);
+        if (!current) {
+            merged.set(chunk.id, {...chunk});
+            continue;
+        }
+
+        merged.set(chunk.id, {
+            id: current.id,
+            name: current.name || chunk.name,
+            argumentsText: current.argumentsText + (chunk.argumentsText ?? ""),
+        });
+    }
+
+    return [...merged.values()];
 }
 
 export function extractOpenAiStreamingToolCalls(input: unknown): ToolCallData[] {

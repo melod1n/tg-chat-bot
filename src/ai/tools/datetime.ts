@@ -1,5 +1,5 @@
 import {AiTool} from "../tool-types";
-import {asNonEmptyString} from "./utils";
+import {asNonEmptyString} from "./utils.js";
 import {AiJsonObject} from "../tool-types";
 
 export const getCurrentDateTimeTool = {

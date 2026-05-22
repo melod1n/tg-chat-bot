@@ -16,6 +16,7 @@ import type {AttachmentKind, AiRuntimeTarget, RuntimeConfigSnapshot} from "./uni
 import type {OpenAIChatMessage} from "./openai-chat-message";
 import type {MistralChatMessage} from "./mistral-chat-message";
 import type {OllamaChatMessage} from "./ollama-chat-message";
+import {buildUserMemoryPrompt} from "./tools/user-memory.js";
 
 export type ConversationAttachment = {
     kind: AttachmentKind;
@@ -267,11 +268,13 @@ function buildSystemInstruction(
     responseLanguage: UserAiResponseLanguage,
     includePythonToolPrompt: boolean,
     additions?: string | null,
+    memoryInstruction?: string | null,
 ): string {
     return [
         config.useSystemPrompt ? getResponseLanguageInstruction(responseLanguage) : null,
         config.systemPrompt && config.useSystemPrompt ? config.systemPrompt : null,
         additions?.trim() ? additions.trim() : null,
+        memoryInstruction?.trim() ? memoryInstruction.trim() : null,
         includePythonToolPrompt ? pythonInterpreterToolPrompt : null,
     ].filter(Boolean).join("\n\n");
 }
@@ -310,11 +313,12 @@ export async function buildConversationSnapshot(
         if (turn.bot) return sum;
         return sum + turn.attachments.filter(attachment => attachment.kind === "image").length;
     }, 0);
+    const memoryInstruction = await buildUserMemoryPrompt(msg.from?.id);
 
     return {
         turns,
         imageCount,
-        systemInstruction: buildSystemInstruction(config, responseLanguage, includePythonToolPrompt, runtimeTarget.systemPromptAdditions),
+        systemInstruction: buildSystemInstruction(config, responseLanguage, includePythonToolPrompt, runtimeTarget.systemPromptAdditions, memoryInstruction),
     };
 }
 

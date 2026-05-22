@@ -14,6 +14,13 @@ import type {ToolCallData} from "../ai/unified-ai-runner.js";
 import {PYTHON_INTERPRETER_TOOL_NAME} from "../ai/tools/python-interpretator.js";
 import {Localization, type LocalizationParams} from "./localization.js";
 
+export const OpenAiBackendModes = {
+    OFFICIAL: "official",
+    COMPATIBLE: "compatible",
+} as const;
+
+export type OpenAiBackend = typeof OpenAiBackendModes[keyof typeof OpenAiBackendModes];
+
 function parseBooleanLike(value: string): boolean {
     const normalized = value.trim().toLowerCase();
     return ["true", "t", "y", "1"].includes(normalized);
@@ -245,6 +252,10 @@ const RuntimeEnvSchema = z.object({
 
     OPENAI_BASE_URL: optionalStringSchema,
     OPENAI_API_KEY: optionalStringSchema,
+    OPENAI_BACKEND: enumWithDefaultSchema(
+        OpenAiBackendModes,
+        OpenAiBackendModes.OFFICIAL,
+    ),
     OPENAI_MODEL: stringWithDefaultSchema("gpt-4.1-nano"),
     OPENAI_IMAGE_MODEL: stringWithDefaultSchema("gpt-image-1-mini"),
     OPENAI_TRANSCRIPTION_MODEL: stringWithDefaultSchema("gpt-4o-mini-transcribe"),
@@ -343,6 +354,7 @@ export class Environment {
 
     static OPENAI_BASE_URL?: string;
     static OPENAI_API_KEY?: string;
+    static OPENAI_BACKEND: OpenAiBackend = OpenAiBackendModes.OFFICIAL;
     static OPENAI_MODEL: string = "";
     static OPENAI_IMAGE_MODEL: string = "";
     static OPENAI_TRANSCRIPTION_MODEL: string = "";
@@ -1881,6 +1893,7 @@ export class Environment {
 
         Environment.OPENAI_BASE_URL = env.OPENAI_BASE_URL;
         Environment.OPENAI_API_KEY = env.OPENAI_API_KEY;
+        Environment.OPENAI_BACKEND = env.OPENAI_BACKEND;
         Environment.OPENAI_MODEL = env.OPENAI_MODEL;
         Environment.OPENAI_IMAGE_MODEL = env.OPENAI_IMAGE_MODEL;
         Environment.OPENAI_TRANSCRIPTION_MODEL = env.OPENAI_TRANSCRIPTION_MODEL;
@@ -2079,6 +2092,10 @@ export class Environment {
 
     static setOpenAIApiKey(newAIApiKey: string | undefined): void {
         this.OPENAI_API_KEY = newAIApiKey;
+    }
+
+    static setOpenAIBackend(newBackend: OpenAiBackend): void {
+        this.OPENAI_BACKEND = newBackend;
     }
 
     static setOpenAIModel(newModel: string): void {

@@ -1,4 +1,4 @@
-import {ChatCompletionMessageParam} from "openai/resources/chat/completions";
+import type {ChatCompletionCreateParamsNonStreaming, ChatCompletionMessageParam} from "openai/resources/chat/completions";
 import {ChatRequest} from "ollama";
 import {BoundaryValue} from "../common/boundary-types.js";
 import {ToolRankerFallbackPolicy} from "../common/policies.js";
@@ -107,7 +107,7 @@ export class ToolRanker {
                         target: aiLogProviderTarget(target),
                         fallbackTarget: aiLogProviderTarget(mainModelTarget),
                         duration: aiLogDuration(startedAt),
-                        error: failureMessage,
+                        errorSummary: failureMessage,
                     });
 
                     const fallbackRanker = buildToolRankerPrompt(
@@ -142,7 +142,7 @@ export class ToolRanker {
                         target: aiLogProviderTarget(target),
                         fallbackTarget: aiLogProviderTarget(mainModelTarget),
                         duration: aiLogDuration(startedAt),
-                        error: fallbackErrorMessage,
+                        errorSummary: fallbackErrorMessage,
                     });
 
                     failureMessage = fallbackErrorMessage;
@@ -155,7 +155,7 @@ export class ToolRanker {
                 target: aiLogProviderTarget(target),
                 fallbackPolicy,
                 duration: aiLogDuration(startedAt),
-                error: failureMessage,
+                errorSummary: failureMessage,
             });
 
             return resolveToolRankerFallbackSelection({
@@ -227,12 +227,19 @@ export class ToolRanker {
                     {role: "user", content: userQuery},
                 ] satisfies ChatCompletionMessageParam[];
 
-                // gpt-5 family ranker targets reject temperature=0; use the model default instead.
-                const response = await openAi.chat.completions.create({
+                // OpenAI-compatible servers often reject `response_format`, so keep JSON mode
+                // only for official OpenAI endpoints.
+                const request: ChatCompletionCreateParamsNonStreaming = {
                     model: target.model,
                     messages,
-                    response_format: {type: "json_object"},
-                });
+                };
+
+                if (!target.baseUrl) {
+                    // gpt-5 family ranker targets reject temperature=0; use the model default instead.
+                    request.response_format = {type: "json_object"};
+                }
+
+                const response = await openAi.chat.completions.create(request);
 
                 return response.choices[0]?.message?.content?.trim() ?? "";
             }

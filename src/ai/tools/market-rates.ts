@@ -1,7 +1,7 @@
-import {AiTool} from "../tool-types";
+import {AiTool} from "../tool-types.js";
 import axios from "axios";
-import {toolsLogger} from "./tool-logger";
-import {AiJsonObject} from "../tool-types";
+import {toolsLogger} from "./tool-logger.js";
+import {AiJsonObject} from "../tool-types.js";
 
 const logger = toolsLogger.child("market-rates");
 

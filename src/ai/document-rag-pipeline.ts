@@ -42,6 +42,10 @@ export async function prepareDocumentRag(
     const documents = downloads.filter(download => download.kind === "document");
     if (!documents.length) return undefined;
 
+    if (provider === AiProvider.OPENAI && config.openAiBackend === "compatible") {
+        return undefined;
+    }
+
     switch (provider) {
         case AiProvider.OPENAI: {
             const openAi = createOpenAiClient(config.openAiChatTarget);

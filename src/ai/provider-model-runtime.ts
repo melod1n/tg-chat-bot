@@ -196,7 +196,8 @@ export async function getRuntimeCapabilities(
     target?: AiRuntimeTarget
 ): Promise<AiModelCapabilities> {
     const runtimeTarget = target ?? resolveAiRuntimeTarget(provider, "chat", model ?? getRuntimeModel(provider));
-        const result = await getModelCapabilities(provider, runtimeTarget.model, target?.purpose ?? "chat") ?? buildCapabilities({});
+    const targetPurpose = target?.purpose && target.purpose !== "memoryCompress" ? target.purpose : "chat";
+    const result = await getModelCapabilities(provider, runtimeTarget.model, targetPurpose) ?? buildCapabilities({});
 
     for (const capabilityName of CAPABILITY_NAMES) {
         if (provider === AiProvider.OPENAI && (capabilityName === "vision" || capabilityName === "ocr")) {

@@ -7,6 +7,7 @@ Bot for Telegram with a lot of commands and AI (Ollama/Mistral/OpenAI) written i
 ```bash
 cp .env.example .env
 # Edit .env: add BOT_TOKEN, CREATOR_ID and configure optional AI models (MISTRAL_API_KEY, OPENAI_API_KEY, OLLAMA_ADDRESS)
+# For OpenAI-compatible servers (llama.cpp, etc.), set OPENAI_BACKEND=compatible and OPENAI_BASE_URL.
 # Optional: set DATABASE_URL to postgres://... for PostgreSQL or :memory: for ephemeral SQLite.
 # Optional: set DATA_PATH if you want to override the default local storage directory.
 ```

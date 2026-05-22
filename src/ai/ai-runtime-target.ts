@@ -6,7 +6,7 @@ import {AiModelCapabilities} from "../model/ai-model-capabilities.js";
 import {AiProvider} from "../model/ai-provider.js";
 
 export type AiCapabilityName = keyof AiModelCapabilities;
-export type AiRuntimePurpose = AiCapabilityName | "chat";
+export type AiRuntimePurpose = AiCapabilityName | "chat" | "memoryCompress";
 
 export type AiRuntimeTarget = {
     provider: AiProvider;
@@ -24,6 +24,7 @@ const PURPOSE_SUFFIXES: Record<AiRuntimePurpose, string[]> = {
     thinking: ["THINKING", "THINK"],
     extendedThinking: ["EXTENDED_THINKING", "THINKING", "THINK"],
     tools: ["TOOLS", "CHAT"],
+    memoryCompress: ["MEMORY_COMPRESS"],
     toolRank: ["TOOL_RANK", "TOOL_RANKER"],
     audio: ["AUDIO"],
     documents: ["DOCUMENTS", "RAG", "EMBEDDING"],
@@ -153,6 +154,25 @@ export function resolveAiRuntimeTarget(
     const systemPromptAdditions = firstEnv(systemPromptEnvNames(provider, purpose));
 
     return {provider, purpose, model, baseUrl, apiKey, systemPromptAdditions};
+}
+
+function hasExplicitTargetConfig(provider: AiProvider, purpose: AiRuntimePurpose): boolean {
+    const prefix = providerPrefix(provider);
+    return [
+        ...endpointEnvNames(provider, purpose),
+        ...apiKeyEnvNames(provider, purpose),
+        ...modelEnvNames(provider, purpose),
+        ...systemPromptEnvNames(provider, purpose),
+    ].some(name => !!env(name)) || !!env(`${prefix}_${PURPOSE_SUFFIXES[purpose][0]}_MODEL`);
+}
+
+export function resolveOptionalAiRuntimeTarget(
+    provider: AiProvider,
+    purpose: AiRuntimePurpose,
+    modelOverride?: string,
+): AiRuntimeTarget | undefined {
+    if (!hasExplicitTargetConfig(provider, purpose)) return undefined;
+    return resolveAiRuntimeTarget(provider, purpose, modelOverride);
 }
 
 export function sameRuntimeEndpoint(left: AiRuntimeTarget, right: AiRuntimeTarget): boolean {

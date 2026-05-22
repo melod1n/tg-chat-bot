@@ -1,6 +1,6 @@
 import {AiTool} from "../tool-types";
-import {runCommand} from "../../util/utils";
-import {asNonEmptyString} from "./utils";
+import {runCommand} from "../../util/utils.js";
+import {asNonEmptyString} from "./utils.js";
 import {AiJsonObject} from "../tool-types";
 
 export const shellExecuteTool = {

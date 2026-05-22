@@ -102,6 +102,100 @@ export const TOOL_RANKER_TOOL_INFOS = {
             example("где определён BotService?", ["search_files"]),
         ],
     ),
+    read_user_info: tool(
+        "read_user_info",
+        "Read persistent user memory from user.md.",
+        "Use before editing or when the user asks what you remember about them.",
+        [
+            example("что ты помнишь обо мне?", ["read_user_info"]),
+            example("покажи мою память", ["read_user_info"]),
+        ],
+    ),
+    read_system_info: tool(
+        "read_system_info",
+        "Read persistent assistant memory from system.md.",
+        "Use before editing or when the user asks what instructions you remember about yourself.",
+        [
+            example("что ты помнишь о себе?", ["read_system_info"]),
+            example("покажи память о тебе", ["read_system_info"]),
+        ],
+    ),
+    add_user_info: tool(
+        "add_user_info",
+        "Append a durable fact about the user to persistent memory.",
+        "Use when the user asks to remember a new fact, preference, identity detail, or profile information about themselves.",
+        [
+            example("запомни, что меня зовут Иван", ["add_user_info"]),
+            example("запомни, что я люблю чай", ["add_user_info"]),
+            example("remember that I like short answers", ["add_user_info"]),
+        ],
+    ),
+    add_system_info: tool(
+        "add_system_info",
+        "Append a durable instruction about the assistant to persistent memory.",
+        "Use when the user asks to remember a new assistant identity, style, or behavior instruction.",
+        [
+            example("тебя зовут Евлампий", ["add_system_info"]),
+            example("ты ИИ помощник", ["add_system_info"]),
+            example("remember you are a concise assistant", ["add_system_info"]),
+        ],
+    ),
+    remove_user_info: tool(
+        "remove_user_info",
+        "Remove a specific user fact from persistent memory.",
+        "Use when the user asks to forget, delete, or remove a specific fact about themselves.",
+        [
+            example("забудь, что я люблю кофе", ["remove_user_info"]),
+            example("удали из памяти, что я живу в Москве", ["remove_user_info"]),
+            example("forget that I work at ACME", ["remove_user_info"]),
+        ],
+    ),
+    remove_system_info: tool(
+        "remove_system_info",
+        "Remove a specific assistant instruction from persistent memory.",
+        "Use when the user asks to forget or remove a specific instruction about the assistant.",
+        [
+            example("забудь, что тебя зовут Евлампий", ["remove_system_info"]),
+            example("убери правило отвечать коротко", ["remove_system_info"]),
+            example("forget that you are a concise assistant", ["remove_system_info"]),
+        ],
+    ),
+    replace_user_info: tool(
+        "replace_user_info",
+        "Replace the full user memory with a new compact version.",
+        "Use when the user wants to overwrite all remembered user info, for example when they say to forget everything and keep only the new fact.",
+        [
+            example("забудь всё обо мне и запиши только это: меня зовут Иван", ["replace_user_info"]),
+            example("замени всю память обо мне на: люблю чай и короткие ответы", ["replace_user_info"]),
+        ],
+    ),
+    replace_system_info: tool(
+        "replace_system_info",
+        "Replace the full assistant memory with a new compact version.",
+        "Use when the user wants to overwrite all remembered assistant info or instructions.",
+        [
+            example("забудь всё о себе и запиши только это: тебя зовут Евлампий", ["replace_system_info"]),
+            example("замени инструкцию о себе на: ты краткий ИИ помощник", ["replace_system_info"]),
+        ],
+    ),
+    delete_user_info: tool(
+        "delete_user_info",
+        "Delete user.md entirely.",
+        "Use when the user explicitly asks to delete all remembered user info, not just a fragment.",
+        [
+            example("удали всю память обо мне", ["delete_user_info"]),
+            example("forget all user memory", ["delete_user_info"]),
+        ],
+    ),
+    delete_system_info: tool(
+        "delete_system_info",
+        "Delete system.md entirely.",
+        "Use when the user explicitly asks to delete all remembered assistant info, not just a fragment.",
+        [
+            example("удали всю память о себе", ["delete_system_info"]),
+            example("forget all assistant memory", ["delete_system_info"]),
+        ],
+    ),
     create_file: tool(
         "create_file",
         "Create a new small file.",
@@ -443,6 +537,16 @@ function buildPriorityLines(tools: readonly ToolRankerToolInfo[]): string[] {
     pushIfAvailable("read_file", "known local file path -> read_file");
     pushIfAvailable("list_directory", "project structure or directory listing -> list_directory");
     pushIfAvailable("search_files", "local file/content search or unknown file path -> search_files");
+    pushIfAvailable("read_user_info", "inspect remembered user info -> read_user_info");
+    pushIfAvailable("read_system_info", "inspect remembered assistant info -> read_system_info");
+    pushIfAvailable("add_user_info", "remember a new user fact -> add_user_info");
+    pushIfAvailable("add_system_info", "remember a new assistant instruction -> add_system_info");
+    pushIfAvailable("remove_user_info", "forget a user fact -> remove_user_info");
+    pushIfAvailable("remove_system_info", "forget an assistant instruction -> remove_system_info");
+    pushIfAvailable("replace_user_info", "overwrite all user memory -> replace_user_info");
+    pushIfAvailable("replace_system_info", "overwrite all assistant memory -> replace_system_info");
+    pushIfAvailable("delete_user_info", "delete all user memory -> delete_user_info");
+    pushIfAvailable("delete_system_info", "delete all assistant memory -> delete_system_info");
     pushIfAvailable("edit_file_patch", "targeted existing file edit -> edit_file_patch");
     pushIfAvailable("update_file", "full existing file replacement -> update_file");
     pushIfAvailable("create_file", "small new file -> create_file");

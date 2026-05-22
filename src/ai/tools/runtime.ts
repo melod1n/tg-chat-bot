@@ -1,14 +1,19 @@
-import {getToolHandlers} from "./registry";
-import {normalizeToolArguments} from "./utils";
-import {PYTHON_INTERPRETER_TOOL_NAME, PythonInterpreterInputFile, runPythonInterpreter} from "./python-interpretator";
-import {toolsLogger} from "./tool-logger";
-import {AiJsonObject, AiJsonValue} from "../tool-types";
+import {getToolHandlers} from "./registry.js";
+import {normalizeToolArguments} from "./utils.js";
+import {PYTHON_INTERPRETER_TOOL_NAME, PythonInterpreterInputFile, runPythonInterpreter} from "./python-interpretator.js";
+import {toolsLogger} from "./tool-logger.js";
+import {AiJsonObject, AiJsonValue} from "../tool-types.js";
+import type {MemoryRuntimeContext} from "./user-memory.js";
+import type {AiRuntimeTarget} from "../ai-runtime-target.js";
+import type {AiProvider} from "../../model/ai-provider.js";
 
 const logger = toolsLogger.child("runtime");
 
 export type ToolRuntimeContext = {
     pythonInputFiles?: PythonInterpreterInputFile[];
-};
+    provider?: AiProvider;
+    runtimeTarget?: AiRuntimeTarget;
+} & MemoryRuntimeContext;
 
 function stringifyToolResult(result: AiJsonValue): string {
     if (typeof result === "string") return result;
@@ -48,7 +53,7 @@ export async function executeToolCall(
         }
 
         const arguments1 = normalizeToolArguments(args, userId);
-        const result = await handler(arguments1);
+        const result = await handler(arguments1, context);
         const s = stringifyToolResult(result);
         logger.debug("execute.done", {name, chars: s.length, duration: logger.duration(startedAt)});
         return s;

@@ -1,5 +1,5 @@
 import {Ollama} from "ollama";
-import {toolsLogger} from "./tool-logger";
+import {toolsLogger} from "./tool-logger.js";
 import {AiJsonObject, AiJsonValue} from "../tool-types";
 import type {BoundaryValue} from "../../common/boundary-types";
 

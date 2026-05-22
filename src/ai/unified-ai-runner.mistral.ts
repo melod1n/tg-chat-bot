@@ -7,6 +7,8 @@ import {aiLog, aiLogDuration, aiLogProviderTarget, aiLogToolCall} from "../loggi
 import {AiProvider} from "../model/ai-provider";
 import {getProviderAdapter} from "./provider-adapters";
 import {runToolRankStage} from "./tool-rank-stage";
+import {ensureToolsSelected} from "./tool-mappers.js";
+import {MEMORY_TOOL_NAMES} from "./tools/user-memory.js";
 
 import {
     MAX_TOOL_ROUNDS,
@@ -66,7 +68,7 @@ export async function runMistral(
                 streamMessage,
                 signal,
             });
-            const filteredTools = rankResult.filteredTools;
+            const filteredTools = ensureToolsSelected(availableTools, rankResult.filteredTools, MEMORY_TOOL_NAMES);
             const requestTools = filteredTools.length ? filteredTools : undefined;
 
             streamMessage.setStatus(roundStatus(round, firstRoundStatus) ?? "");
@@ -113,7 +115,11 @@ export async function runMistral(
                     userId: msg.from?.id,
                     toolCalls: calls,
                     streamMessage,
-                    toolContext,
+                    toolContext: {
+                        ...toolContext,
+                        provider: AiProvider.MISTRAL,
+                        runtimeTarget: config.mistralChatTarget,
+                    },
                     toolMemory,
                     adapter,
                     appendTargets: [messages, requestMessages],
@@ -183,7 +189,11 @@ export async function runMistral(
                 userId: msg.from?.id,
                 toolCalls: calls,
                 streamMessage,
-                toolContext,
+                toolContext: {
+                    ...toolContext,
+                    provider: AiProvider.MISTRAL,
+                    runtimeTarget: config.mistralChatTarget,
+                },
                 toolMemory,
                 adapter,
                 appendTargets: [messages, requestMessages],

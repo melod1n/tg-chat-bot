@@ -194,6 +194,7 @@ export const filesDir = path.join(Environment.DATA_PATH, "files");
 export const NOTES_HEADER = "## Notes\n";
 export const notesDir = path.join(Environment.DATA_PATH, "notes");
 export const notesRootFile = path.join(notesDir, "index.md");
+export const memoryDir = path.join(Environment.DATA_PATH, "memory");
 
 const logger = appLogger.child("main");
 
@@ -262,7 +263,7 @@ async function main() {
     });
 
     await measureStartupStep("environment.load", () => Environment.load());
-    const dirsToCheck = [cacheDir, photoDir, photoGenDir, documentDir, audioDir, videoDir, videoNotesDir, videoTempDir, notesDir, filesDir];
+    const dirsToCheck = [cacheDir, photoDir, photoGenDir, documentDir, audioDir, videoDir, videoNotesDir, videoTempDir, notesDir, memoryDir, filesDir];
     await measureStartupStep("prepare_directories", () => {
         const created: string[] = [];
         for (const dir of dirsToCheck) {

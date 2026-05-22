@@ -1,11 +1,11 @@
 import axios from "axios";
-import {toolsLogger} from "./tool-logger";
+import {toolsLogger} from "./tool-logger.js";
 
 const logger = toolsLogger.child("brave-search");
-import {Environment} from "../../common/environment";
-import {logError} from "../../util/utils";
-import {AiJsonObject, AiJsonValue, AiTool} from "../tool-types";
-import {asBoolean, asNonEmptyString} from "./utils";
+import {Environment} from "../../common/environment.js";
+import {logError} from "../../util/utils.js";
+import {AiJsonObject, AiJsonValue, AiTool} from "../tool-types.js";
+import {asBoolean, asNonEmptyString} from "./utils.js";
 
 type BraveSearchProfile = {
     name?: string;

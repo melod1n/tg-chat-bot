@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import {z} from "zod";
 
-import {Environment} from "../../common/environment";
-import {AiJsonObject, AiJsonValue, AiTool} from "../tool-types";
+import {Environment} from "../../common/environment.js";
+import {AiJsonObject, AiJsonValue, AiTool} from "../tool-types.js";
 import {
     MAX_COPY_ENTRIES,
     MAX_COPY_TOTAL_BYTES,
@@ -23,8 +23,8 @@ import {
     MAX_PATCH_SEARCH_BYTES,
     MAX_STREAM_WRITE_IDLE_MS,
     MAX_STREAM_WRITE_SESSIONS,
-} from "./limits";
-import {asBoolean, asNonEmptyString, asPositiveInt, asString} from "./utils";
+} from "./limits.js";
+import {asBoolean, asNonEmptyString, asPositiveInt, asString} from "./utils.js";
 
 // =============================================================================
 // Public types and schemas

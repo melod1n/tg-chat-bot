@@ -86,6 +86,19 @@ test("prompt includes search files routing example for usage search", () => {
     assert.ok(prompt.includes(JSON.stringify({toolNames: ["search_files"]})));
 });
 
+test("prompt includes memory routing examples for remember requests", () => {
+    const prompt = promptFor("no_tool", "read_user_info", "add_user_info", "remove_user_info", "replace_user_info", "delete_user_info");
+
+    assert.ok(prompt.includes("что ты помнишь обо мне?"));
+    assert.ok(prompt.includes("запомни, что меня зовут Иван"));
+    assert.ok(prompt.includes("забудь, что я люблю кофе"));
+    assert.ok(prompt.includes("забудь всё обо мне и запиши только это"));
+    assert.ok(prompt.includes("удали всю память обо мне"));
+    assert.ok(prompt.includes("inspect remembered user info -> read_user_info"));
+    assert.ok(prompt.includes("remember a new user fact -> add_user_info"));
+    assert.ok(prompt.includes(JSON.stringify({toolNames: ["add_user_info"]})));
+});
+
 test("prompt includes edit file patch routing example for targeted edits", () => {
     const prompt = promptFor("no_tool", "edit_file_patch");
 

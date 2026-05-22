@@ -2,6 +2,7 @@ import type {
     ResponseInputMessageContentList,
     ResponseOutputMessage,
 } from "openai/resources/responses/responses";
+import type {ChatCompletionMessageParam} from "openai/resources/chat/completions";
 
 type OpenAIInputChatMessage = {
     type: "message";
@@ -17,3 +18,5 @@ type OpenAIOutputChatMessage = {
 } & Pick<ResponseOutputMessage, "id" | "status">;
 
 export type OpenAIChatMessage = OpenAIInputChatMessage | OpenAIOutputChatMessage;
+
+export type OpenAICompatibleChatMessage = ChatCompletionMessageParam;

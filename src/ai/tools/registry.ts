@@ -1,17 +1,17 @@
-import {Environment} from "../../common/environment";
-import {AiTool} from "../tool-types";
-import {WEB_SEARCH_TOOL_NAME, webSearch, webSearchTool, webSearchToolPrompt} from "./web-search";
-import {getCurrentDateTime, getCurrentDateTimeTool} from "./datetime";
-import {shellExecute, shellExecuteTool} from "./shell";
-import {ToolHandler} from "./types";
-import {getWeather, getWeatherTool} from "./weather";
+import {Environment} from "../../common/environment.js";
+import {AiTool} from "../tool-types.js";
+import {WEB_SEARCH_TOOL_NAME, webSearch, webSearchTool, webSearchToolPrompt} from "./web-search.js";
+import {getCurrentDateTime, getCurrentDateTimeTool} from "./datetime.js";
+import {shellExecute, shellExecuteTool} from "./shell.js";
+import {ToolHandler} from "./types.js";
+import {getWeather, getWeatherTool} from "./weather.js";
 import {
     GET_FINANCIAL_MARKET_DATA_TOOL_NAME,
     getFinancialMarketData,
     getFinancialMarketDataToolPrompt,
     getMarketRates
-} from "./market-rates";
-import {pythonInterpreterTool, runPythonInterpreter} from "./python-interpretator";
+} from "./market-rates.js";
+import {pythonInterpreterTool, runPythonInterpreter} from "./python-interpretator.js";
 import {
     beginFileWrite,
     beginFileWriteTool,
@@ -44,12 +44,14 @@ import {
     updateFileTool,
     writeFileChunk,
     writeFileChunkTool
-} from "./files";
+} from "./files.js";
+import {executeMemoryTool, memoryToolPrompt, memoryTools, type MemoryToolName} from "./user-memory.js";
 import {getMcpToolHandlers, getMcpToolPrompts, getMcpTools} from "../mcp/mcp-registry.js";
 
 export const defaultTools: AiTool[] = [
     getCurrentDateTimeTool,
     getFinancialMarketData,
+    ...memoryTools,
 ];
 
 export const fileTools = [
@@ -169,6 +171,20 @@ export const getToolHandlers = () => {
 
     if (isLocalToolEnabled("get_datetime")) handlers.get_datetime = getCurrentDateTime;
     if (isLocalToolEnabled("get_financial_market_data")) handlers.get_financial_market_data = getMarketRates;
+    for (const tool of memoryTools) {
+        if (!isLocalToolEnabled(tool.function.name)) continue;
+        handlers[tool.function.name] = async (args, context) => {
+            const userId = typeof args?.userId === "number" ? args.userId : undefined;
+            if (!userId) {
+                return {success: false, error: "Missing userId"};
+            }
+
+            return executeMemoryTool(tool.function.name as MemoryToolName, {
+                userId,
+                content: typeof args?.content === "string" ? args.content : undefined,
+            }, context);
+        };
+    }
 
     if (isLocalToolEnabled("read_file")) handlers.read_file = readFile;
     if (isLocalToolEnabled("list_directory")) handlers.list_directory = listDirectory;
@@ -186,7 +202,7 @@ export const getToolHandlers = () => {
     if (isLocalToolEnabled("rename_path")) handlers.rename_path = renamePath;
     if (isLocalToolEnabled("delete_path")) handlers.delete_path = deletePath;
 
-    if (isLocalToolEnabled("python_interpreter")) handlers.python_interpreter = runPythonInterpreter;
+    if (isLocalToolEnabled("python_interpreter")) handlers.python_interpreter = (args, _context) => runPythonInterpreter(args);
     if (isLocalToolEnabled("shell_execute")) handlers.shell_execute = shellExecute;
     if (isLocalToolEnabled("web_search")) handlers.web_search = webSearch;
     if (isLocalToolEnabled("get_weather")) handlers.get_weather = getWeather;
@@ -200,6 +216,8 @@ export function getToolPrompts(toolNames: string[]): string[] {
     }
 
     const prompts: string[] = [];
+    const memoryToolNames = new Set(memoryTools.map(tool => tool.function.name));
+    let memoryPromptAdded = false;
 
     for (const toolName of toolNames) {
         if (!isLocalToolEnabled(toolName)) {
@@ -209,6 +227,14 @@ export function getToolPrompts(toolNames: string[]): string[] {
         if (!prompts.includes(fileToolsToolPrompt) &&
             fileTools.map(t => t.function.name).includes(toolName)) {
             prompts.push(fileToolsToolPrompt);
+            continue;
+        }
+
+        if (memoryToolNames.has(toolName)) {
+            if (!memoryPromptAdded) {
+                prompts.push(memoryToolPrompt);
+                memoryPromptAdded = true;
+            }
             continue;
         }
 

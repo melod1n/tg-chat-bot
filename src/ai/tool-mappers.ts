@@ -3,6 +3,7 @@ import {AiProvider} from "../model/ai-provider.js";
 import {getTools} from "./tools/registry.js";
 import {WEB_SEARCH_TOOL_NAME} from "./tools/web-search.js";
 import {PYTHON_INTERPRETER_TOOL_NAME} from "./tools/python-interpretator.js";
+import {toolSchemaNames} from "./tool-schema-utils.js";
 
 export type AiProviderName = "ollama" | "openai" | "mistral";
 
@@ -24,6 +25,11 @@ export function getOpenAITools(forCreator?: boolean): AiTool[] {
         type: "function",
         function: tool.function,
     }));
+}
+
+export function getOpenAICompatibleTools(forCreator?: boolean): AiTool[] {
+    // The compatible chat.completions backend only accepts plain function tools.
+    return getOpenAITools(forCreator);
 }
 
 export type OpenAiResponseTool = {
@@ -78,4 +84,21 @@ export function getProviderTools(provider: AiProvider, forCreator?: boolean): Ai
         case AiProvider.OPENAI:
             return getOpenAITools(forCreator);
     }
+}
+
+export function ensureToolsSelected<T>(availableTools: readonly T[], selectedTools: readonly T[], toolNames: readonly string[]): T[] {
+    const selected = [...selectedTools];
+    const selectedNames = new Set(selected.flatMap(tool => toolSchemaNames(tool as never)));
+
+    for (const toolName of toolNames) {
+        if (selectedNames.has(toolName)) continue;
+
+        const extraTool = availableTools.find(tool => toolSchemaNames(tool as never).includes(toolName));
+        if (extraTool) {
+            selected.unshift(extraTool);
+            selectedNames.add(toolName);
+        }
+    }
+
+    return selected;
 }

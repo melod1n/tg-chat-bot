@@ -1,11 +1,11 @@
-import {AiTool} from "../tool-types";
+import {AiTool} from "../tool-types.js";
 import path from "node:path";
 import {readFile, writeFile} from "node:fs/promises";
-import {NOTES_HEADER, notesDir, notesRootFile} from "../../index";
-import {asNonEmptyString} from "./utils";
+import {NOTES_HEADER, notesDir, notesRootFile} from "../../index.js";
+import {asNonEmptyString} from "./utils.js";
 import fs from "node:fs";
-import {toolsLogger} from "./tool-logger";
-import {AiJsonObject} from "../tool-types";
+import {toolsLogger} from "./tool-logger.js";
+import {AiJsonObject} from "../tool-types.js";
 
 const logger = toolsLogger.child("create-note");
 
