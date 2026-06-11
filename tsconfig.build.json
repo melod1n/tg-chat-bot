@@ -4,7 +4,20 @@
     "rootDir": "src",
     "outDir": "dist",
     "types": ["node"],
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+
+    "useUnknownInCatchVariables": false,
+    "strict": false,
+    "strictNullChecks": false,
+
+    "incremental": true
+  },
+  "buildOptions": {
+    "incremental": true
+  },
+  "typeAcquisition": {
+    "enable": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules"]
