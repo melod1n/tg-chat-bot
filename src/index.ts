@@ -37,7 +37,6 @@ import {Shutdown} from "./commands/shutdown";
 import {Leave} from "./commands/leave";
 import {OllamaChat} from "./commands/ollama-chat";
 import {Start} from "./commands/start";
-import {GeminiChat} from "./commands/gemini-chat";
 import {Choice} from "./commands/choice";
 import {Coin} from "./commands/coin";
 import {Qr} from "./commands/qr";
@@ -58,16 +57,10 @@ import {OllamaListModels} from "./commands/ollama-list-models";
 import {OllamaGetModel} from "./commands/ollama-get-model";
 import {OllamaSetModel} from "./commands/ollama-set-model";
 import {Mistral} from "@mistralai/mistralai";
-import {GoogleGenAI} from "@google/genai";
 import {MistralGetModel} from "./commands/mistral-get-model";
 import {MistralSetModel} from "./commands/mistral-set-model";
 import {MistralListModels} from "./commands/mistral-list-models";
-import {GeminiListModels} from "./commands/gemini-list-models";
-import {GeminiGetModel} from "./commands/gemini-get-model";
-import {GeminiSetModel} from "./commands/gemini-set-model";
 import {Debug} from "./commands/debug";
-import {GeminiGenerateImage} from "./commands/gemini-generate-image";
-import {YouTubeDownload} from "./commands/youtube-download";
 import fs from "node:fs";
 import path from "node:path";
 import {setInterval} from "node:timers";
@@ -79,8 +72,6 @@ import {OpenAISetModel} from "./commands/openai-set-model";
 import {Info} from "./commands/info";
 import {OpenAIGenImage} from "./commands/openai-gen-image";
 import {clearUpFolderFromOldFiles} from "./util/files";
-import {DownloadYtVideo} from "./callback_commands/download-yt-video";
-import {YtInfo} from "./callback_commands/yt-info";
 import {AdminsList} from "./commands/admins-list";
 import {ExportDb} from "./commands/export-db";
 
@@ -95,9 +86,12 @@ export const userDao = new UserDao();
 export const bot = new TelegramBot({botToken: Environment.BOT_TOKEN, testEnvironment: Environment.TEST_ENVIRONMENT});
 export let botUser: User;
 
-export const googleAi = new GoogleGenAI({apiKey: Environment.GEMINI_API_KEY});
 export const mistralAi = new Mistral({apiKey: Environment.MISTRAL_API_KEY});
-export const openAi = new OpenAI({apiKey: Environment.OPENAI_API_KEY, baseURL: Environment.OPENAI_BASE_URL, dangerouslyAllowBrowser: true});
+export const openAi = new OpenAI({
+    apiKey: Environment.OPENAI_API_KEY,
+    baseURL: Environment.OPENAI_BASE_URL,
+    dangerouslyAllowBrowser: true
+});
 
 export const ollama = new Ollama({
     host: Environment.OLLAMA_ADDRESS,
@@ -169,8 +163,6 @@ export const commands: Command[] = [
 
     new Shutdown(),
     new Leave(),
-
-    new YouTubeDownload()
 ];
 
 if (Environment.ENABLE_UNSAFE_EVAL) {
@@ -179,8 +171,6 @@ if (Environment.ENABLE_UNSAFE_EVAL) {
 
 export const callbackCommands: CallbackCommand[] = [
     new OllamaCancel(),
-    new DownloadYtVideo(),
-    new YtInfo()
 ];
 
 if (Environment.OLLAMA_ADDRESS && Environment.OLLAMA_MODEL && Environment.SYSTEM_PROMPT) {
@@ -199,11 +189,7 @@ if (Environment.OLLAMA_API_KEY) {
 
 if (Environment.GEMINI_API_KEY) {
     commands.push(
-        new GeminiChat(),
-        new GeminiListModels(),
-        new GeminiGetModel(),
-        new GeminiSetModel(),
-        new GeminiGenerateImage()
+
     );
 }
 
@@ -255,7 +241,7 @@ async function main() {
     await readPrompts();
 
     console.log(Environment.SYSTEM_PROMPT);
-    
+
     console.log(
         `TEST_ENVIRONMENT: ${Environment.TEST_ENVIRONMENT}\n` +
         `DATA_PATH: ${Environment.DATA_PATH}\n` +

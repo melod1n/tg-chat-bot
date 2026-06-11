@@ -19,7 +19,8 @@ export class MistralGetModel extends Command {
 
     async getModelCapabilities(): Promise<AiModelCapabilities | null> {
         try {
-            const info = await mistralAi.models.retrieve({modelId: Environment.MISTRAL_MODEL});
+            const info =
+                (await mistralAi.models.retrieve({modelId: Environment.MISTRAL_MODEL}) as any);
             console.log(info);
 
             return {

@@ -31,24 +31,17 @@ import {MessageStore} from "../common/message-store";
 import {SystemInfo} from "../commands/system-info";
 import {PrefixResponse} from "../commands/prefix-response";
 import {OllamaChat} from "../commands/ollama-chat";
-import {getYouTubeVideoId, getYouTubeVideoInfo, isVideoExists} from "./ytdl";
-import {YouTubeDownload} from "../commands/youtube-download";
 import {ChatCommand} from "../base/chat-command";
 import {WebSearchResponse} from "../model/web-search-response";
-import {GeminiChat} from "../commands/gemini-chat";
 import {MistralChat} from "../commands/mistral-chat";
 import {OpenAIChat} from "../commands/openai-chat";
 import {AiProvider} from "../model/ai-provider";
 import {AiModelCapabilities} from "../model/ai-model-capabilities";
 import {OllamaGetModel} from "../commands/ollama-get-model";
-import {GeminiGetModel} from "../commands/gemini-get-model";
 import {MistralGetModel} from "../commands/mistral-get-model";
 import {OpenAIGetModel} from "../commands/openai-get-model";
 import {SendOptions} from "../model/send-options";
 import {EditOptions} from "../model/edit-options";
-import VideoInfo from "youtubei.js/dist/src/parser/youtube/VideoInfo";
-import {DownloadYtVideo} from "../callback_commands/download-yt-video";
-import {TryAgain} from "../callback_commands/try-again";
 import {StoredUser} from "../model/stored-user";
 
 export const ignore = () => {
@@ -1326,10 +1319,6 @@ export async function getCurrentModelCapabilities(): Promise<AiModelCapabilities
             });
             break;
         }
-        case AiProvider.GEMINI: {
-            promise = commands.find(c => c instanceof GeminiGetModel).getModelCapabilities();
-            break;
-        }
         case AiProvider.MISTRAL: {
             promise = commands.find(c => c instanceof MistralGetModel).getModelCapabilities();
             break;
@@ -1436,8 +1425,6 @@ export async function processNewMessage(msg: Message): Promise<void> {
 
     const textToCheck = startsWithPrefix ? messageWithoutPrefix : cmdText;
 
-    if (Environment.PROCESS_LINKS && await processYouTubeLink(msg, getFirstLink(msg))) return;
-
     if (msg.chat.type !== "private" && (!msg.reply_to_message || msg.reply_to_message.from.id !== botUser.id) && !startsWithPrefix) return;
 
     if (msg.chat.type === "private" && !Environment.ADMIN_IDS.has(msg.chat.id)) return;
@@ -1445,10 +1432,6 @@ export async function processNewMessage(msg: Message): Promise<void> {
     switch (Environment.DEFAULT_AI_PROVIDER) {
         case AiProvider.OLLAMA: {
             await commands.find(e => e instanceof OllamaChat).executeOllama(msg, textToCheck);
-            break;
-        }
-        case AiProvider.GEMINI: {
-            await commands.find(e => e instanceof GeminiChat).executeGemini(msg, textToCheck);
             break;
         }
         case AiProvider.MISTRAL: {
@@ -1460,125 +1443,6 @@ export async function processNewMessage(msg: Message): Promise<void> {
             break;
         }
     }
-}
-
-function getFirstLink(msg: Message): string | null {
-    if (msg.entities) {
-        const urlEntities = msg.entities.filter(e => e.type === "url");
-        if (urlEntities.length) {
-            const e = urlEntities[0];
-            return msg.text.substring(e.offset, e.offset + e.length);
-        }
-    }
-
-    return null;
-}
-
-export async function processYouTubeLink(msg: Message, url?: string, id?: string): Promise<boolean> {
-    if (!url && !id) return false;
-
-    let waitMessage: Message | null = msg.from.id === botUser.id ? msg : null;
-    let videoId: string | null = null;
-
-    try {
-        try {
-            videoId = id || getYouTubeVideoId(url);
-        } catch (e) {
-            logError(e);
-            return false;
-        }
-
-        const yt = commands.find(e => e instanceof YouTubeDownload);
-
-        if (await checkRequirements(yt, msg)) {
-            if (!waitMessage) {
-                waitMessage = await replyToMessage({
-                    message: msg,
-                    text: "⏳ Ищу информацию о видео..."
-                });
-            } else {
-                await editMessageText({message: msg, text: "⏳ Ищу информацию о видео..."});
-
-            }
-
-            let videoInfo: VideoInfo | null = null;
-            let ytError: string = null;
-
-            try {
-                videoInfo = await getYouTubeVideoInfo(videoId);
-            } catch (e) {
-                logError(e);
-
-                if ("version" in e) {
-                    ytError = e.message;
-                }
-            }
-
-            console.log("VIDEO_INFO", videoInfo);
-
-            let text: string = null;
-
-            const inCache = isVideoExists({videoId: videoId});
-
-            const duration = videoInfo?.basic_info?.duration || null;
-            const canDownload = inCache || duration && duration <= 300;
-
-            if (videoInfo) {
-                text = "Видео с YouTube\n\n" +
-                    `Название: ${videoInfo.basic_info?.title}\n` +
-                    `Автор: ${videoInfo.secondary_info?.owner?.author?.name}\n` +
-                    `Длительность: ${duration} сек.`;
-
-                if (!canDownload) {
-                    text += `\n\nВидео слишком длинное (${duration} сек. > 300 сек.)`;
-                }
-            } else if (!ytError) {
-                text = "Информация о видео не найдена";
-            }
-
-            const errorButInCache = !videoInfo && ytError && inCache;
-            if (errorButInCache) {
-                text = "Я не смог получить информацию о видео, но нашёл его в кэше.";
-            }
-
-            if (!text && ytError) {
-                await editMessageText({
-                    message: waitMessage,
-                    text: Environment.errorText,
-                    reply_markup: {
-                        inline_keyboard: [[
-                            TryAgain.withData("/ytinfo " + videoId).asButton()
-                        ]]
-                    }
-                });
-            } else {
-                await editMessageText({
-                    message: waitMessage,
-                    text: text,
-                    reply_markup: canDownload ? {
-                        inline_keyboard: [[
-                            DownloadYtVideo.withData(inCache, "/ytdl " + videoId).asButton()
-                        ]]
-                    } : {inline_keyboard: []}
-                });
-            }
-        }
-        return true;
-    } catch (e) {
-        logError(e);
-
-        await editMessageText({
-            message: waitMessage,
-            text: Environment.errorText,
-            reply_markup: {
-                inline_keyboard: [[
-                    TryAgain.withData("/ytinfo " + videoId).asButton()
-                ]]
-            }
-        });
-    }
-
-    return false;
 }
 
 export async function processEditedMessage(msg: Message): Promise<void> {

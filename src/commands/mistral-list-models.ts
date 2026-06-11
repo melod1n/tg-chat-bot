@@ -16,7 +16,7 @@ export class MistralListModels extends Command {
             const listResponse = await mistralAi.models.list();
             console.log(listResponse);
 
-            const modelsString = listResponse.data
+            const modelsString = (listResponse.data as any)
                 .sort((a, b) => a.name.localeCompare(b.name))
                 .map(e => `${e.id}`)
                 .join("\n");
